@@ -12,9 +12,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/settings"
 	"github.com/branchkit/branchkit-plugin-voice/views"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // --- Editor state (lives on PluginState) ---

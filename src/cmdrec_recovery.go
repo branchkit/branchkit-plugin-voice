@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/session"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // Continuous listening keeps the command_recognition pipeline up, and that

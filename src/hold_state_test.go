@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/speech"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // The command hold (Option+G) against dictation (Option+T) and continuous

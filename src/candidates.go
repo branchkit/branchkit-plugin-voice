@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/views"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 const vocabCandidatesStore = "plugin.voice.vocab_candidates"

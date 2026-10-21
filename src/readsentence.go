@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	branchkit "github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/calibration"
+	branchkit "github.com/branchkit/plugin-sdk-go"
 )
 
 // "Read a sentence" on the Models tab: the tab shows one of the

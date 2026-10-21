@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"time"
 
-	branchkit "github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/compare"
+	branchkit "github.com/branchkit/plugin-sdk-go"
 )
 
 // Comparing dictation models on the user's own voice: every

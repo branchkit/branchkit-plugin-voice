@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/calibration"
 	"github.com/branchkit/branchkit-plugin-voice/hud"
 	"github.com/branchkit/branchkit-plugin-voice/speech"
 	"github.com/branchkit/branchkit-plugin-voice/views"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 //go:embed views/voice.css

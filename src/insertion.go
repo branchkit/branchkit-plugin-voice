@@ -7,8 +7,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/speech"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // The insert step of the dictation text pipeline: fit a

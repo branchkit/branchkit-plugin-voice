@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/compare"
 	"github.com/branchkit/branchkit-plugin-voice/views"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // Reading covers the whole set before repeating: the next sentence is the

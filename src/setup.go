@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/views"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // Voice's step on the platform's Setup page.

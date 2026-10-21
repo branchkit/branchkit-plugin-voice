@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/session"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // An Option+G hold over continuous listening listens on an ephemeral run of

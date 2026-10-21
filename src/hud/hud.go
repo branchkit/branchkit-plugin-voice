@@ -7,8 +7,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/views"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // subtitleSpan renders an item subtitle. Short subtitles (hint letters, key

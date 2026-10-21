@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	branchkit "github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/calibration"
 	"github.com/branchkit/branchkit-plugin-voice/compare"
+	branchkit "github.com/branchkit/plugin-sdk-go"
 )
 
 // "Said just now" on the Models tab: the user says a

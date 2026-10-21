@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/calibration"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // setCommandCaptureDir toggles trial-audio capture on the command stage by

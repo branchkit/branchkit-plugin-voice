@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/calibration"
 	"github.com/branchkit/branchkit-plugin-voice/settings"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // --- Plugin state ---

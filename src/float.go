@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/hud"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // buildFloatableCatalog derives the plugin.voice.floatable_collections catalog from the

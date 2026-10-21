@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"time"
 
-	branchkit "github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/calibration"
 	"github.com/branchkit/branchkit-plugin-voice/compare"
+	branchkit "github.com/branchkit/plugin-sdk-go"
 )
 
 // Comparing command models on the user's own voice: every

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/branchkit/plugin-sdk-go"
 	"github.com/branchkit/branchkit-plugin-voice/speech"
+	"github.com/branchkit/plugin-sdk-go"
 )
 
 // PhoneticEntry is an alias for speech.PhoneticEntry.
