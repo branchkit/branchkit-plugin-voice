@@ -1,0 +1,5 @@
+# The sherpa overlay patches must stay byte-exact LF: git apply matches their
+# context lines against an LF upstream clone, so an autocrlf=true Windows
+# checkout that rewrote them to CRLF would fail every build.
+
+stages/sherpa-commands/patches/*.patch text eol=lf

@@ -1,0 +1,143 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "fmt"
+
+templ HudSettings(data HudSettingsData) {
+	<bk-cards>
+	<bk-card label="Appearance">
+	<bk-table columns="1fr 1fr">
+		<div class="settings-row">
+			<div class="label">Help HUD</div>
+			<div class="value-cell">
+				<button
+					class="segmented-btn"
+					data-on:click={ branchkit.MethodPost("toggle-help-hud", "") }
+				>Show / Hide</button>
+			</div>
+		</div>
+		<div class="settings-row">
+			<div>
+				<div class="label">Text size</div>
+				<div class="hud-channel-desc">BranchKit sets this for every HUD, voice's included, under Settings › Effects.</div>
+			</div>
+			<div></div>
+		</div>
+		<div class="settings-row">
+			<div class="label">Tier Badges</div>
+			<div class="value-cell">
+				<button
+					class={ fontSizeBtnClass(data.ShowBadges) }
+					data-on:click={ branchkit.MethodPost("set-show-badges", `{enabled: true}`) }
+				>Show</button>
+				<button
+					class={ fontSizeBtnClass(!data.ShowBadges) }
+					data-on:click={ branchkit.MethodPost("set-show-badges", `{enabled: false}`) }
+				>Hide</button>
+			</div>
+		</div>
+		<div class="settings-row">
+			<div class="label">Compact Mode</div>
+			<div class="value-cell">
+				<button
+					class={ fontSizeBtnClass(data.CompactMode) }
+					data-on:click={ branchkit.MethodPost("set-compact-mode", `{enabled: true}`) }
+				>On</button>
+				<button
+					class={ fontSizeBtnClass(!data.CompactMode) }
+					data-on:click={ branchkit.MethodPost("set-compact-mode", `{enabled: false}`) }
+				>Off</button>
+			</div>
+		</div>
+		<div class="settings-row">
+			<div class="label">Background Opacity</div>
+			<div class="value-cell">
+				<span class="hud-slider-value">{ fmt.Sprintf("%d%%", data.Opacity) }</span>
+				<input
+					type="range"
+					min="50"
+					max="100"
+					value={ fmt.Sprint(data.Opacity) }
+					class="hud-slider"
+					data-on:change={ "@post('" + branchkit.MethodURL("set_hud_opacity") + "', {payload: {value: parseInt(evt.target.value)}})" }
+				/>
+			</div>
+		</div>
+		<div class="settings-row">
+			<div class="label">Blur Amount</div>
+			<div class="value-cell">
+				<span class="hud-slider-value">{ fmt.Sprintf("%dpx", data.BlurAmount) }</span>
+				<input
+					type="range"
+					min="0"
+					max="60"
+					value={ fmt.Sprint(data.BlurAmount) }
+					class="hud-slider"
+					data-on:change={ "@post('" + branchkit.MethodURL("set_hud_blur") + "', {payload: {value: parseInt(evt.target.value)}})" }
+				/>
+			</div>
+		</div>
+		<div class="settings-row">
+			<div class="label">Corner Radius</div>
+			<div class="value-cell">
+				<span class="hud-slider-value">{ fmt.Sprintf("%dpx", data.CornerRadius) }</span>
+				<input
+					type="range"
+					min="0"
+					max="30"
+					value={ fmt.Sprint(data.CornerRadius) }
+					class="hud-slider"
+					data-on:change={ "@post('" + branchkit.MethodURL("set_hud_corner_radius") + "', {payload: {value: parseInt(evt.target.value)}})" }
+				/>
+			</div>
+		</div>
+	</bk-table>
+	</bk-card>
+	<bk-card label="Channels">
+	<bk-table columns="1fr 1fr">
+		@channelRow("Command Overlay", "Shows available voice commands", "main", data.MainEnabled)
+		@channelRow("Discovery", "Alphabet, app list, and live transcript", "discovery", data.DiscoveryEnabled)
+		<div class="settings-row">
+			<div>
+				<div class="label">Notifications</div>
+				<div class="hud-channel-desc">BranchKit shows these for every plugin now. Turn them on or off, and choose how long they stay, under Settings › Effects.</div>
+			</div>
+			<div></div>
+		</div>
+	</bk-table>
+	</bk-card>
+	</bk-cards>
+}
+
+templ channelRow(label, description, channel string, enabled bool) {
+	<div class="settings-row">
+		<div>
+			<div class="label">{ label }</div>
+			<div class="hud-channel-desc">{ description }</div>
+		</div>
+		<div class="hud-channel-cell">
+			<select
+				class="hud-channel-select"
+				data-on:change={ fmt.Sprintf("@post('%s', {payload: {channel: '%s', enabled: evt.target.value === 'on'}})", branchkit.MethodURL("set_hud_channel"), channel) }
+			>
+				if enabled {
+					<option value="on" selected>On</option>
+					<option value="off">Off</option>
+				} else {
+					<option value="on">On</option>
+					<option value="off" selected>Off</option>
+				}
+			</select>
+		</div>
+	</div>
+}
+
+// fontSizeBtnClass marks which button in a segmented choice is the current
+// value. The look of both states is .segmented-btn / .is-active in
+// settings-components.css, shared with the browser plugin's hint chooser.
+func fontSizeBtnClass(active bool) string {
+	if active {
+		return "segmented-btn is-active"
+	}
+	return "segmented-btn"
+}

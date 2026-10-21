@@ -1,0 +1,109 @@
+package views
+
+import "fmt"
+
+templ TestResult(data TestResultView) {
+	<div id="test-result">
+		if data.Empty {
+			<div class="tr-empty">
+				Type a phrase to test command matching.
+			</div>
+		} else if data.Matched {
+			<div class="tr-body">
+				<div class="tr-head">
+					<span class="tr-verdict-ok">&#10003; Matched</span>
+					if data.OwnerPlugin != "" {
+						<span class="tr-owner">({ data.OwnerPlugin })</span>
+					}
+				</div>
+				<div class="tr-detail">
+					if data.WhyLine != "" {
+						<div class="tr-row">
+							<span class="tr-key">Why:</span>
+							<span class="tr-val">{ data.WhyLine }</span>
+						</div>
+					}
+					<div class="tr-row">
+						<span class="tr-key">Consumed:</span>
+						<code class="tr-val">{ data.ConsumedWords }</code>
+					</div>
+					if data.ActionDisplay != "" {
+						<div class="tr-row">
+							<span class="tr-key">Action:</span>
+							<span class="tr-val">{ data.ActionDisplay }</span>
+						</div>
+					}
+					for _, step := range data.Chain {
+						<div class="tr-row">
+							<span class="tr-key">Then:</span>
+							<code class="tr-val">{ step.Words }</code>
+							if step.Effect != "" {
+								<span class="tr-val">{ " \u2192 " + step.Effect }</span>
+							}
+							if step.OwnerPlugin != "" {
+								<span class="tr-owner">({ step.OwnerPlugin })</span>
+							}
+						</div>
+					}
+					if data.HasArgs {
+						<div class="tr-row">
+							<span class="tr-key">Args:</span>
+							for _, arg := range data.Args {
+								<span class="tr-arg">
+									<code class="tr-arg-name">{ fmt.Sprintf("{%s} =", arg.Name) }</code> { arg.Value }
+								</span>
+							}
+						</div>
+					}
+					if data.HasRequires {
+						<div class="tr-row">
+							<span class="tr-key">Requires:</span>
+							for _, tag := range data.RequiresTags {
+								<code class="tr-tag">{ tag }</code>
+							}
+						</div>
+					}
+					if data.HasSetsTags {
+						<div class="tr-row">
+							<span class="tr-key">Sets:</span>
+							for _, tag := range data.SetsTags {
+								<code class="tr-tag">{ tag }</code>
+							}
+						</div>
+					}
+					if data.HasClearsTags {
+						<div class="tr-row">
+							<span class="tr-key">Clears:</span>
+							for _, tag := range data.ClearsTags {
+								<code class="tr-tag">{ tag }</code>
+							}
+						</div>
+					}
+				</div>
+			</div>
+		} else {
+			<div class="tr-body">
+				<div class="tr-head tr-head--nomatch">
+					<span class="tr-verdict-no">&#10005; No match</span>
+					<code class="tr-phrase">{ data.Phrase }</code>
+				</div>
+				if data.HasPartial {
+					<div class="tr-partial">
+						if data.HasNextList {
+							Partial match — keep typing (expecting: <code>{ data.NextList }</code>)
+						} else {
+							Partial match — keep typing
+						}
+					</div>
+				}
+				if data.HasGatedWhy {
+					<div class="tr-gated">
+						<code>{ data.GatedChild }</code> works inside a mode — say
+						<code>{ data.GatedEntry }</code> first, or as one breath:
+						<code>{ data.GatedEntry + " " + data.GatedChild }</code>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}

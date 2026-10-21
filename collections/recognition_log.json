@@ -1,0 +1,53 @@
+{
+  "preset": "log",
+  "lifecycle": {
+    "type": "retention",
+    "retention_days": 30
+  },
+  "id_strategy": {
+    "type": "by_field",
+    "field": "id"
+  },
+  "merge": "authoritative",
+  "privacy": {
+    "default_recording": false
+  },
+  "description": "Recognition history: each matched command's phrase, with the margins the confidence floor is tuned against. Off until you turn it on; kept 30 days. The History HUD shows recent matches either way, from memory. Append-only recognition log, keyed as a compacted changelog (id_strategy: by_field id, merge: authoritative). Every matched command is introduced with its dispatched action, active mode, per-word margin (worst + mean), and an empty verdict; the server mints the record's `id` and returns it. Flagging a row as a mishear in the History HUD annotates the SAME id with verdict=\"wrong\" (append_keyed), which folds onto the match on a compacted read. Analysis reads the folded records: verdict empty = the margin population, \"wrong\" = confirmed confusers. Drives the confidence floor.",
+  "fields": [
+    {
+      "key": "id",
+      "field_type": "string",
+      "label": "Record id"
+    },
+    {
+      "key": "phrase",
+      "field_type": "string",
+      "label": "Phrase"
+    },
+    {
+      "key": "action",
+      "field_type": "string",
+      "label": "Action"
+    },
+    {
+      "key": "mode",
+      "field_type": "string",
+      "label": "Mode"
+    },
+    {
+      "key": "worst",
+      "field_type": "number",
+      "label": "Worst margin"
+    },
+    {
+      "key": "mean",
+      "field_type": "number",
+      "label": "Mean margin"
+    },
+    {
+      "key": "verdict",
+      "field_type": "string",
+      "label": "Verdict"
+    }
+  ]
+}

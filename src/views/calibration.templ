@@ -1,0 +1,953 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "github.com/branchkit/plugin-sdk-go/ui"
+import "fmt"
+import "strings"
+
+// --- Helper functions ---
+
+func calTargetCardClass(matched bool) string {
+	if matched {
+		return "target-card cal-matched"
+	}
+	return "target-card"
+}
+
+// matcherWinnerTooltip returns a one-liner explaining each MatchWinner
+// value, used as the title attribute on the per-attempt decision badge.
+// Keeps the wire vocabulary visible while making it self-explanatory on
+// hover. Falls through to the raw value when an unknown winner arrives
+// (forward compatibility against future platform enum extensions).
+func matcherWinnerTooltip(winner string) string {
+	switch winner {
+	case "gated_scoped":
+		return "A gated command in the active scope won. Trial passes."
+	case "gated_unscoped":
+		return "A gated command outside the active scope won — the fixture's scope is narrower than the matcher's accepted set. Counts as filter failure for calibration."
+	case "ungated":
+		return "An always-on command absorbed the words before the fixture's gate could — the gate didn't carry the trial. Counts as filter failure for calibration."
+	case "no_match":
+		return "No command pattern matched. The matcher's filter rejected every candidate."
+	}
+	return winner
+}
+
+// calAttemptRowClass tags each Reports attempt row green/red/yellow so
+// the outcome reads at a glance without per-row inline styles. The
+// matcher-rejected variant fires when the recognizer heard the codeword but the
+// matcher's filter refused to resolve it — a fixture or tag-state issue,
+// not an acoustic failure.
+func calAttemptRowClass(matched, matcherRejected bool) string {
+	if matched {
+		return "cal-reports-attempt cal-reports-attempt-pass"
+	}
+	if matcherRejected {
+		return "cal-reports-attempt cal-reports-attempt-filter"
+	}
+	return "cal-reports-attempt cal-reports-attempt-fail"
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+// tierBadge is the short tag shown on a catalog row for a non-base tier
+// (base commands carry no badge — they need no setup).
+func tierBadge(tier string) string {
+	switch tier {
+	case "mode_gated":
+		return "mode"
+	case "dynamic":
+		return "hints"
+	case "slotted":
+		return "slot"
+	default:
+		return ""
+	}
+}
+
+// catFilterExpr builds the Datastar data-show expression for the catalog
+// search: show when $catFilter is empty or the (lowercased, JS-escaped)
+// haystack contains the term. Client-side so filtering is instant and survives
+// the frequent re-renders (the signal persists across element patches).
+func catFilterExpr(haystack string) string {
+	lit := strings.ReplaceAll(strings.ToLower(haystack), `\`, `\\`)
+	lit = strings.ReplaceAll(lit, "'", `\'`)
+	return "!$catFilter || '" + lit + "'.includes($catFilter.toLowerCase())"
+}
+
+// calCatRowFilterExpr hides a catalog row whose owner+pattern doesn't match the
+// search term. Owner is folded into the haystack so searching a plugin name
+// surfaces its whole section.
+// calCatRowHaystack is the searchable text of a row: its own pattern plus
+// every nested child's, so filtering "left" reveals the "snap" entry that
+// opens it.
+func calCatRowHaystack(row CatalogRow) string {
+	hay := row.Pattern
+	for _, k := range row.Children {
+		hay += " " + k.Pattern
+	}
+	return hay
+}
+
+func calCatRowFilterExpr(owner, pattern string) string {
+	return catFilterExpr(owner + " " + pattern)
+}
+
+// --- Recordings filters (client-side, instant; signals survive re-render) ---
+
+// jsStrLit lowercases + escapes a string for embedding in a single-quoted JS
+// literal inside a data-* expression.
+func jsStrLit(s string) string {
+	lit := strings.ReplaceAll(strings.ToLower(s), `\`, `\\`)
+	return strings.ReplaceAll(lit, "'", `\'`)
+}
+
+// clipFilterState maps a clip to its status-filter bucket: "confirmed",
+// "misspoke", "needs_review", or "" (no bucket — visible only under the All
+// filter). Mirrors the review verdict + the needs-review nudge.
+func clipFilterState(r RecordingView) string {
+	switch {
+	case r.Disposition == "confirmed":
+		return "confirmed"
+	case r.Disposition == "misspoke":
+		return "misspoke"
+	case r.NeedsReview:
+		return "needs_review"
+	default:
+		return ""
+	}
+}
+
+// recSearchExpr is the search half of a data-show: show when $recSearch is empty
+// or the target (the command) contains the term. Searching is by command.
+func recSearchExpr(target string) string {
+	return "!$recSearch || '" + jsStrLit(target) + "'.includes($recSearch.toLowerCase())"
+}
+
+// recClipShowExpr is the data-show for a clip: it must match BOTH the command
+// search and the status filter. In the grouped view the search is redundant (the
+// group already hides on a mismatch); in the flat "most recent" view it's the only
+// thing scoping clips to the searched command.
+func recClipShowExpr(r RecordingView) string {
+	status := "!$recFilter || $recFilter === '" + clipFilterState(r) + "'"
+	return "(" + recSearchExpr(r.Word) + ") && (" + status + ")"
+}
+
+// recGroupShowExpr combines search (by command) with the status filter: a group
+// is shown only when its command matches the search AND it still has at least one
+// clip in the active status bucket — so a header never lingers over a list the
+// filter emptied. The group's distinct clip buckets are baked in as a JS array.
+func recGroupShowExpr(g RecordingGroup) string {
+	seen := map[string]bool{}
+	var states []string
+	for _, c := range g.Clips {
+		st := clipFilterState(c)
+		if !seen[st] {
+			seen[st] = true
+			states = append(states, "'"+st+"'")
+		}
+	}
+	status := "!$recFilter || [" + strings.Join(states, ",") + "].includes($recFilter)"
+	return "(" + recSearchExpr(g.Target) + ") && (" + status + ")"
+}
+
+// calCatGroupFilterExpr hides an entire catalog group (its header and rows) when
+// neither its owner nor any of its row patterns match — so a section header
+// never lingers over an empty list.
+func calCatGroupFilterExpr(g CatalogGroup) string {
+	var b strings.Builder
+	b.WriteString(g.Owner)
+	for _, r := range g.Rows {
+		b.WriteByte(' ')
+		b.WriteString(r.Pattern)
+	}
+	return catFilterExpr(b.String())
+}
+
+// calGotoExpr posts a group-rail click: jump the walk cursor to target index i.
+func calGotoExpr(i int) string {
+	return fmt.Sprintf("@post('" + branchkit.MethodURL("calibrate") + "', {payload: {action: 'goto', index: %d}})", i)
+}
+
+// calActivateExpr posts a sidebar-row activation: enter the command's context
+// and start its trial. Carries the live search term so command-level chaining
+// (and the hands-free speech path) honors the active filter.
+func calActivateExpr(id string) string {
+	lit := strings.ReplaceAll(id, `\`, `\\`)
+	lit = strings.ReplaceAll(lit, "'", `\'`)
+	return "@post('" + branchkit.MethodURL("calibrate") + "', {payload: {action: 'activate', command: '" + lit + "', filter: $catFilter}})"
+}
+
+// --- Reusable components ---
+
+// capRetentionBtn is one option in the capture-retention segmented control.
+templ capRetentionBtn(current, value, label, tip string) {
+	<button
+		class={ "cal-retention-btn", templ.KV("cal-retention-btn--active", current == value) }
+		data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("set_capture_retention") + "', {payload: {policy: '%s'}})", value) }
+		title={ tip }
+	>{ label }</button>
+}
+
+// calClipActions are the per-clip row controls. The two review buttons are the
+// human axis the machine can't derive — after listening, did the recording
+// faithfully say the prompt? "Said it right" confirms a vetted example (a hard
+// case when the clip is fragile); "Said it wrong" excludes misspoken audio from
+// the verdict + training. They're a single disposition, so picking one replaces
+// the other, and clicking the active one clears back to unreviewed. Review needs a
+// known prompt (Labeled); Delete removes the WAV outright and works on any clip.
+templ calClipActions(r RecordingView) {
+	<span class="cal-clip__actions">
+		if r.Labeled {
+			@dispoBtn(r, "confirmed", "Said it right", "I listened — this recording faithfully says the prompt; keep it as a confirmed example")
+			@dispoBtn(r, "misspoke", "Said it wrong", "I misspoke or said the wrong thing — exclude this clip from the verdict + training")
+		}
+		<button
+			class="cal-clip__delete"
+			data-on:click={ branchkit.MethodPost("delete_clip", ui.Args("file", r.File)) }
+			title="Delete this recording — removes the audio file"
+			aria-label="Delete this recording">&#10005;</button>
+	</span>
+}
+
+// dispoBtn is one review-verdict toggle. Clicking the active one clears the mark.
+templ dispoBtn(r RecordingView, value, label, tip string) {
+	<button
+		class={ "cal-dispo-btn", "cal-dispo-btn--" + value, templ.KV("cal-dispo-btn--on", r.Disposition == value) }
+		data-on:click={ branchkit.MethodPost("set_clip_disposition", ui.Args("file", r.File, "disposition", dispoToggle(r.Disposition, value))) }
+		title={ tip }
+	>{ label }</button>
+}
+
+// calRecordingGroup is one target's collapsible section in the Recordings list:
+// the frozen prompt + its DERIVED fragility verdict (the target's "fuzzy state"),
+// with the target's clips beneath. data-preserve-attr keeps the open/closed state
+// across the live walk's per-frame re-render.
+templ calRecordingGroup(g RecordingGroup) {
+	<details class="cal-rec-group" data-preserve-attr="open" data-show={ recGroupShowExpr(g) }>
+		<summary class="cal-rec-group__summary">
+			<span class="cal-rec-group__target">
+				if g.Target != "" {
+					{ g.Target }
+				} else {
+					<span class="cal-recording__dim">Unlabeled</span>
+				}
+			</span>
+			if g.Verdict != "" {
+				@fragBadge(g.Verdict, g.VerdictDetail)
+				<span class="cal-frag-ratio" title="Clips that held the full noise test (held / total)">{ g.VerdictRatio }</span>
+			}
+			<span class="cal-rec-group__count">{ fmt.Sprintf("%d clip%s", g.ClipCount, plural(g.ClipCount)) }</span>
+			if g.Target != "" {
+				<button class="cal-rec-group__reprobe"
+					data-on:click__stop__prevent={ branchkit.MethodPost("reprobe_fragility", ui.Args("target", g.Target)) }
+					title="Re-decode this target's clips through the fragility ladder again, appending a fresh reading to each clip's history">Re-probe</button>
+				<button class="cal-rec-group__reprobe"
+					data-on:click__stop__prevent={ branchkit.MethodPost("score_bias", ui.Args("target", g.Target)) }
+					title="Sweep the never-standalone penalty over this target's clips and score each clip's flip threshold">Score bias</button>
+				<button class="cal-rec-group__delete"
+					data-on:click__stop__prevent={ branchkit.MethodPost("delete_target", ui.Args("target", g.Target)) }
+					title={ fmt.Sprintf("Delete all %d recording%s for this target", g.ClipCount, plural(g.ClipCount)) }>Delete</button>
+			}
+		</summary>
+		<div class="cal-rec-group__clips">
+			for _, r := range g.Clips {
+				@calRecordingClip(r, false)
+			}
+		</div>
+	</details>
+}
+
+// fragBadge is the small robust/fragile/unstable/broken pill (a target's verdict).
+templ fragBadge(verdict, detail string) {
+	<span class={ "cal-frag-badge", "cal-frag-badge--" + verdict } title={ detail }>{ verdict }</span>
+}
+
+// recChip is one status-filter chip: clicking it sets the $recFilter signal, and
+// it highlights while active. "" is the All chip (active when no filter is set).
+templ recChip(value, label string) {
+	<button
+		class="cal-rec-chip"
+		data-class:cal-rec-chip--on={ recChipActiveExpr(value) }
+		data-on:click={ fmt.Sprintf("$recFilter = '%s'", value) }
+	>{ label }</button>
+}
+
+// recChipActiveExpr highlights the All chip when no filter is set (covers the
+// undefined-initial signal), otherwise an exact match.
+func recChipActiveExpr(value string) string {
+	if value == "" {
+		return "!$recFilter"
+	}
+	return "$recFilter === '" + value + "'"
+}
+
+// recViewBtn is one segment of the grouped/most-recent view toggle. Unlike the
+// status chips (client-side signals), the view is server-side — it changes the
+// rendered structure — so it @posts and reflects the active mode from the server.
+templ recViewBtn(current, value, label string) {
+	<button
+		class={ "cal-rec-view", templ.KV("cal-rec-view--on", current == value || (current == "" && value == "grouped")) }
+		data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("set_recordings_view") + "', {payload: {view: '%s'}})", value) }
+	>{ label }</button>
+}
+
+// calRecordingClip is one clip row: audio + what was heard (with the match glyph
+// + the latest fragility outcome) + when, the human-curation marks, and an inline
+// drill-down with per-word fragility, the overall verdict, and re-probe history.
+templ calRecordingClip(r RecordingView, standalone bool) {
+	<div class={ "cal-clip", templ.KV("cal-clip--excluded", r.Disposition == "misspoke"), templ.KV("cal-clip--confirmed", r.Disposition == "confirmed") } data-show={ recClipShowExpr(r) }>
+		<div class="cal-clip__main">
+			<audio class="cal-recording__audio" controls preload="none" src={ r.AudioURL }></audio>
+			<span class="cal-recording__word">
+				if standalone {
+					// Flat "most recent" view has no group header, so name the command.
+					if r.Word != "" {
+						{ r.Word }
+					} else {
+						<span class="cal-recording__dim">(unlabeled)</span>
+					}
+				} else if r.Heard != "" {
+					{ strings.ToUpper(r.Heard) }
+				} else {
+					<span class="cal-recording__dim">(no decode)</span>
+				}
+			</span>
+			<span class="cal-recording__heard">
+				if r.Labeled {
+					if r.Matched {
+						<span class="cal-recording__match cal-recording__match--ok" title="matched the word you were asked to say">&#10003;</span>
+					} else {
+						<span class="cal-recording__match cal-recording__match--miss" title="differs from the word you were asked to say">&#10007;</span>
+					}
+				}
+			</span>
+			<span class="cal-clip-status">
+				if r.FragLabel != "" {
+					<span class={ "cal-clip-outcome", "cal-clip-outcome--" + r.FragOutcome } title="latest fragility probe of this clip">{ r.FragLabel }</span>
+				}
+				if r.BiasScore != "" {
+					<span class="cal-clip-bias" title="Bias strength sweep: the lowest never-standalone penalty that decodes this clip to its prompt">{ r.BiasScore }</span>
+				}
+				if r.NeedsReview {
+					<span class="cal-clip-review" title="Fragile and not yet reviewed — give it a listen, then mark whether you said it right or wrong">needs review</span>
+				}
+			</span>
+			<span class="cal-recording__when">{ r.When }</span>
+			@calClipActions(r)
+		</div>
+		if len(r.Words) > 0 || len(r.History) > 0 {
+			@calClipDetail(r)
+		}
+	</div>
+}
+
+// calClipDetail is the per-clip drill-down: per-word fragility measured on THIS
+// clip, the overall verdict, and the re-probe history (one row per probe-run,
+// newest first, each stamped with the model it ran on — so a re-probe on a new
+// model reads as "did this finally start hearing right?").
+templ calClipDetail(r RecordingView) {
+	<details class="cal-clip-detail" data-preserve-attr="open">
+		<summary class="cal-clip-detail__toggle">Fragility &amp; history</summary>
+		<div class="cal-clip-detail__body">
+			if len(r.Words) > 0 {
+				<div class="cal-clip-frag">
+					<div class="cal-clip-frag__title">Per word — measured on this clip</div>
+					for _, w := range r.Words {
+						<div class="cal-clip-word">
+							<span class="cal-clip-word__name">{ strings.ToUpper(w.Word) }</span>
+							if w.Held {
+								<span class="cal-clip-word__held">&#10003; held</span>
+							} else {
+								<span class="cal-clip-word__conf">confuses with { strings.ToUpper(w.Confuser) }</span>
+							}
+						</div>
+					}
+				</div>
+			}
+			if r.FragLabel != "" {
+				<div class="cal-clip-overall">
+					overall
+					<span class={ "cal-clip-outcome", "cal-clip-outcome--" + r.FragOutcome }>{ r.FragLabel }</span>
+				</div>
+			}
+			if len(r.History) > 0 {
+				<div class="cal-clip-history">
+					<div class="cal-clip-history__title">History — re-probes of this clip</div>
+					for _, h := range r.History {
+						<div class="cal-clip-history__row">
+							<span class="cal-clip-history__when">{ h.When }</span>
+							<span class="cal-clip-history__model">{ h.Model }</span>
+							<span class="cal-clip-history__summary">{ h.Summary }</span>
+						</div>
+					}
+				</div>
+			}
+		</div>
+	</details>
+}
+
+templ CalStatBar(items []CalStatItem) {
+	<div class="cal-stat-bar">
+		for _, item := range items {
+			<div class="cal-stat-item">
+				<span class="cal-stat-label">{ item.Label }</span>
+				if item.Color != "" {
+					<span class="cal-stat-value" style={ fmt.Sprintf("--stat-value-color: %s;", item.Color) }>{ item.Value }</span>
+				} else {
+					<span class="cal-stat-value">{ item.Value }</span>
+				}
+			</div>
+		}
+	</div>
+}
+
+// CalGroupSig renders one inline two-signal glyph in the active command's group
+// rail. Empty kind renders nothing (a codeword/dynamic target has no Resolves).
+templ CalGroupSig(kind string) {
+	if kind == "pass" {
+		<span class="cal-grouprail-sig cal-grouprail-sig--pass" title="pass">&#10003;</span>
+	} else if kind == "fail" {
+		<span class="cal-grouprail-sig cal-grouprail-sig--fail" title="fail">&#10007;</span>
+	} else if kind == "skip" {
+		<span class="cal-grouprail-sig cal-grouprail-sig--skip" title="skipped">&#8211;</span>
+	}
+}
+
+// CalGroupRail is the second column shown while a multi-target command is active:
+// the targets inside the current command's expansion group (done with their
+// two-signal result, the current one highlighted, upcoming greyed). Clicking a
+// row jumps the walk cursor there.
+templ CalGroupRail(data CalibrationViewData) {
+	<div class="cal-group-rail">
+		<div class="cal-group-rail__header" title="The targets inside this command — click one to jump.">
+			{ data.CurrentGroup }
+			<span class="cal-group-rail__pos">{ fmt.Sprintf("%d/%d", data.CurrentGroupPos, data.CurrentGroupTotal) }</span>
+		</div>
+		// The platform's bk-list (settings components reference, Lists): the
+		// current target is the row carrying aria-current, "step" because it is
+		// the walk's place in a sequence.
+		<div class="cal-group-rail__list bk-list">
+			for _, gt := range data.GroupTargets {
+				<button
+					type="button"
+					class={ "bk-list-item", "cal-grouprail-item--" + gt.Status }
+					if gt.Status == "current" {
+						aria-current="step"
+					}
+					data-on:click={ calGotoExpr(gt.Index) }
+					title="Jump to this target">
+					<span class="bk-list-name">{ gt.Prompt }</span>
+					if gt.Status == "done" {
+						<span class="bk-list-meta cal-grouprail-sigs">
+							@CalGroupSig(gt.Heard)
+							@CalGroupSig(gt.Resolves)
+						</span>
+					}
+				</button>
+			}
+		</div>
+	</div>
+}
+
+// CalActiveHealth is the right-pane health readout for the command the live walk
+// sits on — its identity + derived context and a glanceable health summary,
+// shown above the live trial card so the context you came to check stays in view
+// while you test it. (No Test button — selecting the row already activated it.)
+templ CalActiveHealth(d *CommandDetail) {
+	<div class="cal-detail-card cal-detail-card--live">
+		<div class="cal-detail-card__pattern">{ d.Pattern }</div>
+		<div class="cal-detail-card__context">
+			<span class="cal-detail-owner">{ d.Owner }</span>
+			if d.Category != "" {
+				<span class="cal-detail-category">{ d.Category }</span>
+			}
+			if tierBadge(d.Tier) != "" {
+				<span class={ "cal-tier-badge", "cal-tier-badge--" + d.Tier }>{ tierBadge(d.Tier) }</span>
+			}
+			<span class="cal-detail-context-label">{ d.ContextLabel }</span>
+		</div>
+		<div class="cal-detail-stats">
+			<div class="cal-detail-stat">
+				<span class="cal-detail-stat__label">Accuracy</span>
+				<span class="cal-detail-stat__value">{ d.Accuracy }</span>
+			</div>
+			if d.Friction != "" {
+				<div class="cal-detail-stat">
+					<span class="cal-detail-stat__label">Friction</span>
+					<span class="cal-detail-stat__value">{ d.Friction }</span>
+				</div>
+			}
+			if d.Fragility != "" {
+				<div class="cal-detail-stat">
+					<span class="cal-detail-stat__label">Fragility</span>
+					<span class="cal-detail-stat__value">
+						{ d.Fragility }
+						if d.FragilityDetail != "" {
+							{ " · " + d.FragilityDetail }
+						}
+					</span>
+				</div>
+			}
+			if d.Confuser != "" {
+				<div class="cal-detail-stat">
+					<span class="cal-detail-stat__label">Confuses with</span>
+					<span class="cal-detail-stat__value">{ d.Confuser }</span>
+				</div>
+			}
+			<div class="cal-detail-stat">
+				<span class="cal-detail-stat__label">Last tested</span>
+				<span class="cal-detail-stat__value">{ d.LastTested }</span>
+			</div>
+		</div>
+		if d.LastMissHeard != "" {
+			<div class="cal-miss">
+				<div class="cal-miss__head">Last miss &middot; { d.LastMissWhen }</div>
+				<div class="cal-miss__pair">
+					<span class="cal-miss__k">you were saying</span>
+					<code class="cal-miss__said">{ d.Pattern }</code>
+					<span class="cal-miss__arrow">&rarr;</span>
+					<span class="cal-miss__k">the engine heard</span>
+					<code class="cal-miss__heard">{ d.LastMissHeard }</code>
+				</div>
+				if d.LastMissFiltered {
+					<div class="cal-miss__note">Heard correctly &mdash; the matcher refused it in this context (wrong mode or gate).</div>
+				} else {
+					<div class="cal-miss__note">Your clip from that hold is docked below &mdash; play it and listen for what the engine latched onto.</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+// CalReports — full session history with inline expandable detail.
+// Reachable from the catalog via the "Reports" link. Reverse-chronological.
+templ CalReports(sessions []ReportsSessionView, rollups []ReportsContextRollupView) {
+	<div class="cal-reports">
+		<div class="cal-reports-header">
+			<h2>Reports</h2>
+			<button class="cal-nav-btn cal-reports-back"
+				data-on:click={ branchkit.MethodPost("calibrate", `{action: 'dismiss'}`) }>
+				&#9664; Back to Calibration
+			</button>
+		</div>
+		<p class="cal-reports-intro">
+			All past calibration sessions. Click a row to expand its trial-by-trial detail.
+		</p>
+		if len(rollups) > 0 {
+			<div class="cal-rollup-grid">
+				for _, r := range rollups {
+					<div class="cal-rollup-card">
+						<div class="cal-rollup-header">
+							<span class="cal-rollup-context" title={ r.Context }>{ r.Context }</span>
+							if r.Mode == "dynamic" {
+								<span class="cal-reports-mode-badge" title="Dynamic-context (realistic) calibration — matcher-aware scoring">realistic</span>
+							}
+						</div>
+						<div class="cal-rollup-accuracy">{ r.AccuracyPct }</div>
+						<div class="cal-rollup-breakdown">
+							<span class="cal-rollup-pass" title="Matched">&#10003; { fmt.Sprintf("%d", r.MatchCount) }</span>
+							if r.FilterRejectCount > 0 {
+								<span class="cal-rollup-filter" title="Heard correctly but matcher filter rejected">&#9888; { fmt.Sprintf("%d", r.FilterRejectCount) }</span>
+							}
+							if r.AcousticMissCount > 0 {
+								<span class="cal-rollup-miss" title="Acoustic miss — heard differs from target">&#10007; { fmt.Sprintf("%d", r.AcousticMissCount) }</span>
+							}
+						</div>
+						<div class="cal-rollup-footer">
+							{ fmt.Sprintf("%d attempts across %d sessions", r.AttemptCount, r.SessionCount) }
+							if r.LatestRel != "" {
+								<span class="cal-rollup-recency">· last { r.LatestRel }</span>
+							}
+						</div>
+					</div>
+				}
+			</div>
+		}
+		if len(sessions) == 0 {
+			<div class="cal-reports-empty">
+				No sessions recorded yet. Run a calibration to start building history.
+			</div>
+		} else {
+			<div class="cal-reports-list">
+				for _, s := range sessions {
+					<details class="cal-reports-session" data-preserve-attr="open">
+						<summary class="cal-reports-summary">
+							<span class="cal-reports-date" title={ s.Date }>{ s.DateRel }</span>
+							<span class="cal-reports-group">
+								{ s.Group }
+								if s.Mode == "dynamic" {
+									<span class="cal-reports-mode-badge" title={ s.Context }>realistic</span>
+								}
+							</span>
+							<span class="cal-reports-score">{ s.Score }</span>
+							<span class="cal-reports-counts">{ fmt.Sprintf("%d/%d", s.MatchCount, s.WordCount) }</span>
+							<span class="cal-reports-duration">{ s.Duration }</span>
+							<span class="cal-reports-engine">{ s.Engine }</span>
+						</summary>
+						<div class="cal-reports-detail">
+							if len(s.Attempts) == 0 {
+								<div class="cal-reports-empty">No attempt records for this session.</div>
+							} else {
+								<div class="cal-reports-attempts-header">
+									<div>Target</div>
+									<div>Heard</div>
+									<div title="Full trial time, including reading and think time — not recognition speed">Time</div>
+									<div>Result</div>
+								</div>
+								for _, a := range s.Attempts {
+									<div class={ templ.SafeClass(calAttemptRowClass(a.Matched, a.MatcherRejected)) }>
+										<div class="cal-reports-target">{ a.Target }</div>
+										<div class="cal-reports-heard">
+											@CalHeardTrail(a.HeardTallies, a.SilentHolds, a.Heard)
+										</div>
+										<div class="cal-reports-dur">{ a.Duration }</div>
+										<div class="cal-reports-outcome">
+											if a.Matched {
+												<span class="cal-match-indicator">&#10003;</span>
+											} else if a.MatcherRejected {
+												<span class="cal-filter-indicator" title="Heard correctly but the matcher's filter rejected it (fixture or tag-state issue)">&#9888;</span>
+											} else {
+												<span class="cal-miss-indicator" title="Acoustic miss — heard differs from target">&#10007;</span>
+											}
+										</div>
+										if a.Accuracy != "" || a.Confuser != "" || a.FragilityStatus == "robust" || a.Friction != "" {
+											<div class="cal-reports-wordinfo">
+												if a.Accuracy != "" {
+													<span class="cal-wordinfo-acc" title="Lifetime pass rate for this word across all runs">{ a.Accuracy } over { fmt.Sprintf("%d", a.AccuracyRuns) } runs</span>
+												}
+												if a.Friction != "" {
+													<span class="cal-wordinfo-friction" title="Observed difficulty: wrong heards + silent holds the user fought through per attempt before this word settled — high even when it passes">{ a.Friction }</span>
+												}
+												if a.Confuser != "" {
+													<span class={ "cal-wordinfo-confuser", templ.KV("cal-wordinfo-unstable", a.FragilityStatus == "unstable" || a.FragilityStatus == "broken") } title="What this word tends to be misheard as (from the fragility probe)">confuses with { a.Confuser }</span>
+												} else if a.FragilityStatus == "robust" {
+													<span class="cal-wordinfo-robust" title="Held up under perturbation in the fragility probe">robust</span>
+												}
+											</div>
+										}
+										if a.HasMatcherDecision {
+											<div class="cal-reports-decision">
+												<span class="cal-decision-label">Matcher</span>
+												<span class={ templ.SafeClass("cal-decision-winner cal-winner-" + a.MatcherWinner) } title={ matcherWinnerTooltip(a.MatcherWinner) }>{ a.MatcherWinner }</span>
+												if len(a.MatcherGates) > 0 {
+													<span class="cal-decision-gates">gates: { strings.Join(a.MatcherGates, ", ") }</span>
+												} else {
+													<span class="cal-decision-gates cal-decision-empty">no gates active</span>
+												}
+												if a.MatcherHasCompletions {
+													<span class="cal-decision-partial" title="Heard text was a partial — matcher had more words to add">
+														+ { fmt.Sprintf("%d completions", len(a.MatcherNextWords)) }
+													</span>
+												}
+											</div>
+										}
+									</div>
+								}
+							}
+						</div>
+					</details>
+				}
+			</div>
+		}
+	</div>
+}
+
+// CalHeardTrail renders the occurrence-counted mishear trail: each distinct
+// heard value as a step (the last highlighted as settled), with "×N" on
+// repeats, plus a trailing "(no recognition) ×N" for silent holds. Falls back
+// to a bare value (older records with no tallies) or an em-dash.
+templ CalHeardTrail(tallies []CalHeardTally, silentHolds int, fallback string) {
+	if len(tallies) > 0 {
+		for i, h := range tallies {
+			if i > 0 {
+				<span class="cal-heard-arrow">&#8594;</span>
+			}
+			<span class={ "cal-heard-step", templ.KV("cal-heard-final", i == len(tallies)-1) }>
+				{ h.Text }
+				if h.Count > 1 {
+					<span class="cal-heard-count">{ fmt.Sprintf("×%d", h.Count) }</span>
+				}
+			</span>
+		}
+		if silentHolds > 0 {
+			<span class="cal-heard-silent" title="Holds the engine decoded to nothing — no recognition received">{ fmt.Sprintf("(no recognition) ×%d", silentHolds) }</span>
+		}
+	} else if fallback != "" {
+		{ fallback }
+	} else {
+		<span class="dim">&mdash;</span>
+	}
+}
+
+// CalAutoAdvanceToggle renders the single auto-advance preference control as a
+// labelled row: our own label plus the platform's <bk-toggle>. `on` is the
+// current state; clicking posts the requested value, and the switch does not
+// move until the server sends the new state back. Rendered once, in the
+// catalog header.
+templ CalAutoAdvanceToggle(on bool) {
+	<div class="cal-autoadvance" title="When on, a target heard correctly advances on its own — through a command's targets, then to the next command in the sidebar. No Next click needed.">
+		<span class="cal-autoadvance-label">Auto-advance</span>
+		// Bare mode: the row already carries a visible label, so the element
+		// contributes the switch and the contract, not a second label. `title`
+		// gives the inner button its accessible name.
+		<bk-toggle
+			title="Auto-advance"
+			checked?={ on }
+			data-on:change={ "@post('" + branchkit.MethodURL("set_auto_advance") + "', {payload: {enabled: evt.detail.checked}})" }
+		></bk-toggle>
+	</div>
+}
+
+// calLiveTrial is the right pane while a walk is active: the active command's
+// health readout, the heartbeat, the live trial card, the nav controls, and the
+// in-walk retune affordance.
+templ calLiveTrial(data CalibrationViewData) {
+	if data.ActiveDetail != nil {
+		@CalActiveHealth(data.ActiveDetail)
+	}
+	// Liveness heartbeat: a looping CSS animation fires animationiteration
+	// every ~2s while this page is live, posting a ping that keeps the walk
+	// alive. When the user navigates away the element is destroyed, the pings
+	// stop, and the plugin's backstop closes the sitting. Browsers pause
+	// animations on hidden tabs — which is the intended "treat as left".
+	<div class="cal-heartbeat" id="cal-heartbeat" aria-hidden="true" data-on:animationiteration={ branchkit.MethodPost("calibrate", `{action: 'ping'}`) }></div>
+	@CalStatBar([]CalStatItem{
+		{Label: "Progress", Value: fmt.Sprintf("%d/%d", data.CurrentIndex, data.TotalWords)},
+		{Label: "Passed", Value: fmt.Sprintf("%d", data.MatchedCount), Color: "var(--brand-success-0)"},
+		{Label: "Time", Value: data.ElapsedSecs},
+	})
+	<div class={ templ.SafeClass(calTargetCardClass(data.MatchStatus)) } id={ fmt.Sprintf("cal-card-%d", data.CurrentIndex) }>
+		<div class="target-label">
+			{ fmt.Sprintf("%02d of %d", data.CurrentIndex+1, data.TotalWords) }
+			if tierBadge(data.CurrentTier) != "" {
+				<span class={ "cal-tier-badge", "cal-tier-badge--" + data.CurrentTier }>{ tierBadge(data.CurrentTier) }</span>
+			}
+			if data.CurrentGroup != "" {
+				<span class="cal-group-badge" title="This command expands over a list — use Skip group to skip the rest at once.">
+					{ fmt.Sprintf("%s · %d/%d", data.CurrentGroup, data.CurrentGroupPos, data.CurrentGroupTotal) }
+				</span>
+			}
+		</div>
+		<div class="target-word">{ strings.ToUpper(data.CurrentWord) }</div>
+		<div class="cal-heard-area">
+			if data.MatchStatus {
+				<span class="cal-match-indicator">&#10003; Heard</span>
+			}
+			if data.HeardBuffer != "" {
+				<span class="cal-heard-label">Heard:</span> <span class="cal-heard-text">{ data.HeardBuffer }</span>
+			} else {
+				if !data.MatchStatus {
+					<span class="cal-heard-waiting">Hold Option+G and speak</span>
+				}
+			}
+		</div>
+		if data.Bias != nil {
+			<div class="cal-bias" title="Command-recognition bias: without the never-standalone penalty this clip decoded to the left word; the penalty flipped it to the right one.">
+				<span class="cal-bias-label">bias</span>
+				<span class="cal-bias-off">{ strings.ToLower(data.Bias.Off) }</span>
+				<span class="cal-bias-arrow">&#8594;</span>
+				<span class="cal-bias-on">{ strings.ToLower(data.Bias.On) }</span>
+			</div>
+		}
+		if data.FrameCount > 0 || data.TrialElapsed != "" {
+			<div class="cal-trial-meta">
+				if data.FrameCount > 0 {
+					<span>{ fmt.Sprintf("%d frames", data.FrameCount) }</span>
+				}
+				if data.TrialElapsed != "" {
+					<span>{ data.TrialElapsed } elapsed</span>
+				}
+			</div>
+		}
+	</div>
+	<div class="cal-nav-buttons">
+		<button class="cal-nav-btn" disabled?={ !data.CanGoBack }
+			data-on:click={ branchkit.MethodPost("calibrate", `{action: 'back', filter: $catFilter}`) } title="Previous target">
+			&#9664; Back
+		</button>
+		<button class="cal-nav-btn"
+			data-on:click={ branchkit.MethodPost("calibrate", `{action: 'retry'}`) } title="Retry current target">
+			&#8634; Retry
+		</button>
+		<button class="cal-nav-btn"
+			data-on:click={ branchkit.MethodPost("calibrate", `{action: 'skip', filter: $catFilter}`) } title="Skip target">
+			&#9193; Skip
+		</button>
+		if data.CurrentGroup != "" {
+			<button class="cal-nav-btn"
+				data-on:click={ branchkit.MethodPost("calibrate", `{action: 'skip_group', filter: $catFilter}`) }
+				title="Skip the rest of this group">
+				&#9197; Skip group
+			</button>
+		}
+		<button class="cal-nav-btn cal-next-btn"
+			data-on:click={ branchkit.MethodPost("calibrate", `{action: 'advance', filter: $catFilter}`) } title="Accept and move to the next target (or the next command)">
+			Next &#9654;
+		</button>
+		<button class="cal-nav-btn cal-stop-btn"
+			data-on:click={ branchkit.MethodPost("calibrate", `{action: 'stop'}`) }
+			title="Stop — save what you tested and return to the catalog">
+			&#9632; Stop
+		</button>
+	</div>
+	if data.CurrentRetuneKey != "" {
+		<div class="cal-retune">
+			<span class="cal-retune-label" title="Heard wrong? Try a different word for this entry and retest it under the same grammar.">
+				Mishears? Try a different word:
+			</span>
+			<input type="text" value={ data.CurrentRetuneKey } class="cal-retune-input" placeholder="new word"
+				id="cal-retune-input"
+				data-on:keydown={ "evt.key === 'Enter' && " + branchkit.MethodPost("calibration_retune", ui.Args("word", ui.Expr("el.value"))) }/>
+			<button class="cal-nav-btn cal-retune-btn" title="Save this word and retest it on the spot, under the same grammar"
+				data-on:click={ branchkit.MethodPost("calibration_retune", ui.Args("word", ui.Expr("document.getElementById('cal-retune-input').value"))) }>
+				Save &amp; retest
+			</button>
+			<button class="cal-nav-btn cal-retune-revert" title="Reset this word to the plugin default"
+				data-on:click={ branchkit.MethodPost("calibration_revert", "") }>
+				Revert
+			</button>
+		</div>
+	}
+}
+
+// --- Main calibration view ---
+
+templ Calibration(data CalibrationViewData) {
+	<div class="calibration-container">
+		if data.IsReviewing {
+			@CalReports(data.ReportsSessions, data.ReportsRollups)
+		} else if !data.HasPhonetics {
+			<div class="calibration-idle">
+				<div class="hero-section">
+					<h2>Voice Calibration</h2>
+					<p>Enable a phonetics plugin to run calibration.</p>
+				</div>
+			</div>
+		} else {
+			<div class="calibration-surface">
+				<div class="cal-toolbar">
+					<button class="primary cal-toolbar-btn" title="Walk every command, each in its own derived context"
+						data-on:click={ branchkit.MethodPost("calibrate", `{action: 'start', selection: 'all'}`) }>Test all</button>
+					<button class="secondary cal-toolbar-btn" title="Walk the commands most worth checking (never-tested + weak first)"
+						data-on:click={ branchkit.MethodPost("calibrate", `{action: 'start', selection: 'drill'}`) }>Drill weak</button>
+					<button class="secondary cal-toolbar-btn" title="Walk the phonetic codeword set"
+						data-on:click={ branchkit.MethodPost("calibrate", `{action: 'start', selection: 'alphabet'}`) }>Alphabet</button>
+					@CalAutoAdvanceToggle(data.AutoAdvance)
+					<button class="cal-nav-btn"
+						title="Past sessions and per-context rollups"
+						data-on:click={ branchkit.MethodPost("calibrate", `{action: 'view_reports'}`) }>
+						Reports &#9654;
+					</button>
+				</div>
+				if data.ShowBanner {
+					<div class="cal-banner">
+						<span class="cal-banner-text">{ fmt.Sprintf("Tested %d command%s this session.", data.BannerTested, plural(data.BannerTested)) }</span>
+						<button class="cal-nav-btn"
+							data-on:click={ branchkit.MethodPost("calibrate", `{action: 'view_reports'}`) }>
+							View report &#9654;
+						</button>
+						<button class="cal-nav-btn cal-banner-dismiss"
+							data-on:click={ branchkit.MethodPost("calibrate", `{action: 'dismiss'}`) }>
+							Dismiss
+						</button>
+					</div>
+				}
+				<div class={ "cal-catalog-layout", templ.KV("cal-catalog-layout--grouped", data.IsActive && len(data.GroupTargets) > 0) }>
+					<div class="cal-catalog">
+						if len(data.Catalog) == 0 {
+							<p class="cal-section-desc">No commands registered yet.</p>
+						} else {
+							<input
+								type="text"
+								class="cal-catalog-filter"
+								id="cal-catalog-filter"
+								placeholder="Search commands…"
+								autocomplete="off"
+								data-bind:cat-filter/>
+						}
+						for _, group := range data.Catalog {
+							<div class="cal-cat-group" data-show={ calCatGroupFilterExpr(group) }>
+								<div class="cal-cat-group__header">
+									<span class="cal-cat-group__owner">{ group.Owner }</span>
+									<span class="cal-cat-group__rollup">{ group.Rollup } · { fmt.Sprintf("%d/%d", group.Tested, group.Total) }</span>
+									<button class="cal-cat-group__test" title={ "Walk every " + group.Owner + " command" }
+										data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("calibrate") + "', {payload: {action: 'start', selection: 'category:%s'}})", group.Owner) }>Test all</button>
+								</div>
+								for _, row := range group.Rows {
+									<button class={ "cal-cat-row", templ.KV("cal-cat-row--selected", row.ID == data.ActiveCmd), templ.KV("cal-cat-row--warn", row.Warn) }
+										data-show={ calCatRowFilterExpr(group.Owner, calCatRowHaystack(row)) }
+										data-on:click={ calActivateExpr(row.ID) }
+										title="Test this command">
+										<span class="cal-cat-row__line">
+											<span class="cal-cat-row__pattern">{ row.Pattern }</span>
+											if len(row.Children) > 0 {
+												<span class="cal-cat-row__opens">&#9662;</span>
+											}
+											if tierBadge(row.Tier) != "" {
+												<span class={ "cal-tier-badge", "cal-tier-badge--" + row.Tier }>{ tierBadge(row.Tier) }</span>
+											}
+											<span class="cal-cat-row__acc">{ row.Accuracy }</span>
+										</span>
+										if row.Description != "" {
+											<span class="cal-cat-row__desc">{ row.Description }</span>
+										}
+									</button>
+									if len(row.Children) > 0 {
+										<div class="cal-cat-kids" data-show={ calCatRowFilterExpr(group.Owner, calCatRowHaystack(row)) }>
+											for _, kid := range row.Children {
+												<button class={ "cal-cat-kid", templ.KV("cal-cat-kid--selected", kid.ID == data.ActiveCmd), templ.KV("cal-cat-kid--warn", kid.Warn) }
+													data-on:click={ calActivateExpr(kid.ID) }
+													title={ "One breath: \"" + row.Pattern + " " + kid.Pattern + "\"" }>
+													<span class="cal-cat-kid__word">{ kid.Pattern }</span>
+													if kid.Description != "" {
+														<span class="cal-cat-kid__desc">{ kid.Description }</span>
+													}
+													<span class="cal-cat-kid__breath">{ "\"" + row.Pattern + " " + kid.Pattern + "\"" }</span>
+													<span class="cal-cat-kid__acc">{ kid.Accuracy }</span>
+												</button>
+											}
+										</div>
+									}
+								}
+							</div>
+						}
+					</div>
+					if data.IsActive && len(data.GroupTargets) > 0 {
+						@CalGroupRail(data)
+					}
+					<div class="cal-trial-pane">
+						if data.IsActive {
+							@calLiveTrial(data)
+						} else {
+							<div class="cal-trial-empty">
+								<p>Select a command to test it — hold Option+G and say its prompt. Or use <strong>Test all</strong> to walk everything.</p>
+							</div>
+						}
+						if len(data.DockedClips) > 0 {
+							<div class="cal-docked">
+								<div class="cal-docked__head">Clips for <span class="cal-docked__cmd">{ data.DockedFor }</span></div>
+								for _, g := range data.DockedClips {
+									@calRecordingGroup(g)
+								}
+							</div>
+						}
+					</div>
+				</div>
+				<div class="cal-library-link">
+					if data.RecordingsTotal > 0 {
+						<span>{ fmt.Sprintf("%d clip%s on this device", data.RecordingsTotal, plural(data.RecordingsTotal)) }</span>
+					} else {
+						<span>Clips you record while testing are kept on this device</span>
+					}
+					<a href="/plugins/voice/settings/recordings" class="cal-library-link__go">All recordings &rarr;</a>
+				</div>
+			</div>
+		}
+	</div>
+}

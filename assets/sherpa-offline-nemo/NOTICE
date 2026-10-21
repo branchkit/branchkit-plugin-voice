@@ -1,0 +1,36 @@
+Offline NeMo FastConformer-CTC command engine — third-party model attribution.
+
+The command model directory (artifacts/voice/sherpa-offline-nemo) is
+downloaded at provisioning time by `branchkit-cli artifact download`, each file
+SHA-pinned in the voice plugin's manifest. Nothing in it is vendored here.
+
+model.onnx, tokens.txt, bpe.model, bpe.vocab — from
+https://huggingface.co/branchkit/nemo-ctc-en-fastconformer-large-onnx
+(revision eeb9b6a4bde3efd01f18f131feb9e91e46994c5b), BranchKit's ONNX
+conversion of "stt_en_fastconformer_ctc_large" by NVIDIA,
+https://huggingface.co/nvidia/stt_en_fastconformer_ctc_large (revision
+5a84a7a3bee8d9bd414c6719ddfea7bc723e3961), licensed under the Creative Commons
+Attribution 4.0 International License (CC BY 4.0),
+https://creativecommons.org/licenses/by/4.0/. Provided by the licensor "as is",
+without warranties of any kind.
+
+Changes made (the converted files are distributed under CC BY 4.0 too):
+- model.onnx: the checkpoint exported to ONNX with NeMo 2.1.0, sherpa-onnx
+  metadata added, then dynamically quantized to int8 (MatMul weights). It is
+  published as model.int8.onnx and installed as model.onnx.
+- tokens.txt: the model's decoder vocabulary with `<blk>` appended last.
+- bpe.model: the checkpoint's SentencePiece tokenizer, unmodified. The dynamic
+  command grammar needs it to spell arbitrary unseen words (plugin/user/
+  codeword) into the model's tokens.
+- bpe.vocab: a text dump of bpe.model (one "token<space>score" per line), made
+  by `tools/export_bpe_vocab.py`. The runtime in-process grammar builder (the
+  --dynamic-grammar path) reads it through simple-sentencepiece.
+The weights were not retrained. The model card in that repository lists every
+file's sha256 and the source checkpoint's.
+
+silero_vad.onnx — the Silero VAD model (MIT), fetched from the k2-fsa
+sherpa-onnx release (https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models).
+
+No command grammar (HL.fst) is vendored: the stage self-seeds it in-process
+from the live vocabulary at startup, so no command-word artifact ships in the
+app or the MIT CLI.

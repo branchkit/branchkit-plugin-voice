@@ -1,0 +1,31 @@
+# The plugin's own binary and the stage binaries deployed beside it, at the
+# plugin root only: unanchored, `whisperkit_stage` also matched the Swift
+# stage's source folder (stages/whisperkit-stt/Sources/whisperkit_stage/), so
+# a new source file there was silently never committed.
+/voice-plugin
+/voice
+src/voice
+/vad_gate
+/sherpa_commands
+# Build outputs only. `assets/` is NOT ignored wholesale: the manifest declares
+# `plugin_file` model parts under assets/, and the point of that part kind is
+# that the bytes ship INSIDE the plugin, covered by its signature chain.
+# Ignoring the directory meant they existed on the author's machine and nowhere
+# else, so manifest validation failed the moment CI checked out a clean tree
+# (2026-08-16). Large fetched artifacts stay ignored by extension.
+assets/**/*.onnx
+assets/**/*.bin
+assets/**/*.tar.*
+/whisperkit_stage
+/whisper_stage
+/refine_llm
+
+# Voice's stages (stages/): build outputs and local caches only.
+# No trailing slash on target: a build cache may make it a link, which a
+# directory pattern never matches.
+stages/target
+# The patched sherpa-onnx install cache; the committed artifact is the patch
+# under stages/sherpa-commands/patches/.
+stages/sherpa-commands/.sherpa-libs/
+# Downloaded by stage conformance.
+stages/whisper-stt/ggml-tiny.bin

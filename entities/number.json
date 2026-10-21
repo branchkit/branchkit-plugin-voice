@@ -1,0 +1,13 @@
+[
+  {"spoken": "zero", "key": "0", "aliases": ["0"]},
+  {"spoken": "one", "key": "1", "aliases": ["1", "won"]},
+  {"spoken": "two", "key": "2", "aliases": ["2", "too", "to"]},
+  {"spoken": "three", "key": "3", "aliases": ["3"]},
+  {"spoken": "four", "key": "4", "aliases": ["4", "for"]},
+  {"spoken": "five", "key": "5", "aliases": ["5"]},
+  {"spoken": "six", "key": "6", "aliases": ["6"]},
+  {"spoken": "seven", "key": "7", "aliases": ["7"]},
+  {"spoken": "eight", "key": "8", "aliases": ["8", "ate"]},
+  {"spoken": "nine", "key": "9", "aliases": ["9"]},
+  {"spoken": "ten", "key": "10", "aliases": ["10"]}
+]

@@ -1,0 +1,30 @@
+{
+  "preset": "log",
+  "privacy": {
+    "default_recording": true,
+    "reason_for_default_on": "per-clip bias scores (the strength sweep) drive the per-recording flip-threshold readout shown in the calibration recordings UI — the feature's whole purpose"
+  },
+  "description": "Per-clip bias-score readings (one entry per clip × scoring-run): the flip threshold (lowest never-standalone penalty strength that decodes to the prompt), the unbiased + flipped decodes, and the model version it ran on. Append-only history keyed by clip file.",
+  "fields": [
+    {
+      "key": "file",
+      "field_type": "string",
+      "label": "Clip file"
+    },
+    {
+      "key": "target",
+      "field_type": "string",
+      "label": "Target"
+    },
+    {
+      "key": "flip_at",
+      "field_type": "number",
+      "label": "Flip strength"
+    },
+    {
+      "key": "model",
+      "field_type": "string",
+      "label": "Model version"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+[package]
+name = "whisper-stt"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "whisper_stage"
+path = "src/main.rs"
+
+[dependencies]
+branchkit-stage-sdk = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+hound = { workspace = true }
+
+# The stage depends on the MIT stage SDK only (out-of-tree buildable — the
+# model root arrives via env). Not even as a dev-dependency: its
+# end-to-end test drives the built binary through the platform's
+# orchestrator in the platform's own end-to-end voice test, so testing this
+# crate never compiles the platform.
+
+# Backend per OS: Metal on macOS, CPU elsewhere (vulkan/cuda are future
+# opt-ins; pending a CPU-latency measurement of whisper.cpp tiny/base on x86
+# that decides whether vulkan moves up).
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.13", features = ["metal"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+whisper-rs = { version = "0.13" }

@@ -1,0 +1,1040 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "github.com/branchkit/plugin-sdk-go/ui"
+import "fmt"
+
+// slotInputWidth sets the one thing about a phrase slot that is per-value: how
+// wide it has to be. Everything else about the box is .ef-slot-input, and this
+// passes a VALUE rather than a rule so the stylesheet stays in charge.
+func slotInputWidth(value string) string {
+	if value != "" {
+		return fmt.Sprintf("--slot-w: %dch;", len(value)+2)
+	}
+	return ""
+}
+
+// previewClass names the three states of the match preview; voice.css decides
+// how each looks. It returned declaration strings until the inline-style pass.
+func previewClass(kind string) string {
+	switch kind {
+	case "conflict":
+		return "ef-preview--conflict"
+	case "info":
+		return "ef-preview--info"
+	default: // free
+		return "ef-preview--free"
+	}
+}
+
+// lastSlotRepeats reports whether the final slot uses a +/* repeat. A repeating
+// slot is an open tail the grammar compiler requires to be last, so adding a new
+// slot after it is disallowed — the growth chips are disabled while this holds.
+func lastSlotRepeats(slots []PhraseSlotView) bool {
+	if len(slots) == 0 {
+		return false
+	}
+	return slots[len(slots)-1].Repeat != ""
+}
+
+// The form is three questions — When I say, It does, Only when — with the
+// rest under Details. Every richer piece is one "+" away inside the question it belongs
+// to; there is no simple-or-advanced switch.
+templ EditorForm(data EditorView) {
+	if data.Locked {
+		<div id={ "rule-editor-" + slugify(data.EditCanonical) } class="editor-pane editor-pane--locked">
+			@lockedHead(data)
+			@whenISay(data)
+			@itDoes(data)
+			@onlyWhen(data)
+			@details(data)
+			<div class="ef-footer ef-footer--start">
+				<button
+					class="ef-btn ef-btn--filled ef-p6-16"
+					data-on:click={ branchkit.MethodPost("settings/rules/editor-open", ui.Args("canonical", data.EditCanonical)) }
+				>
+					if data.IsUser {
+						Edit
+					} else {
+						Customize
+					}
+				</button>
+				<button
+					class="ef-btn ef-p6-16"
+					title="A new command with the same action and your own phrase"
+					data-on:click={ branchkit.MethodPost("settings/rules/editor-start", ui.Args("from", "copy", "canonical", data.EditCanonical)) }
+				>Duplicate</button>
+				if data.IsUser {
+					<button
+						class="ef-btn ef-p6-16"
+						title="Remove your version and bring the built-in back"
+						data-on:click={ branchkit.MethodPost("commands/reset", ui.Args("canonical", data.EditCanonical)) }
+					>Reset to default</button>
+					<button
+						class="ef-btn ef-btn--danger ef-p6-16"
+						data-on:click={ branchkit.MethodPost("commands/delete", ui.Args("canonical", data.EditCanonical)) }
+					>Delete</button>
+				}
+			</div>
+		</div>
+	} else {
+		<div
+			id={ "rule-editor-" + slugify(data.EditCanonical) }
+			class="editor-pane"
+			data-signals={ ui.Args("trigger", "", "seqRemoveIdx", 0, "seqMoveDir", 0, "newrulephrase", data.Phrase, "editcanonical", data.EditCanonical, "tagPicker0", false, "tagPicker1", false, "tagPicker2", false, "tagSearch0", "", "tagSearch1", "", "tagSearch2", "", "pickerOpen", false, "pickSearch", "") }
+		>
+			<div class="ef-head">
+				<div class="ef-title">
+					if data.IsNew {
+						New command
+					} else if data.IsOverride {
+						Customizing <code class="ef-title-phrase">{ data.Phrase }</code>
+					} else {
+						Editing <code class="ef-title-phrase">{ data.Phrase }</code>
+					}
+				</div>
+				<button
+					title="Close"
+					class="ef-btn ef-btn--bare ef-p2-8 ef-s14"
+					data-on:click={ branchkit.MethodPost("settings/rules/editor-close", "") }
+				>
+					@templ.Raw("&#10005;")
+				</button>
+			</div>
+			if data.ShowStart {
+				@startFrom(data)
+			} else {
+				if data.IsOverride {
+					<div class="ef-ovr">
+						<b>Customizing { data.Phrase }.</b>
+						if data.PluginName != "" {
+							{ " Saving keeps " + data.PluginName + "'s version and uses yours; Reset brings it back." }
+						} else {
+							{ " Saving keeps the built-in version and uses yours; Reset brings it back." }
+						}
+					</div>
+				} else if data.IsNew {
+					<div class="ef-hint ef-hint--mb8">Three questions. Everything else is under Details.</div>
+				}
+				@whenISay(data)
+				@itDoes(data)
+				@onlyWhen(data)
+				@details(data)
+				if data.SaveError != "" {
+					<div class="ef-error">
+						{ data.SaveError }
+					</div>
+				}
+				<div class="ef-footer">
+					<button
+						class="ef-btn ef-p6-16"
+						data-on:click={ branchkit.MethodPost("settings/rules/editor-close", "") }
+					>Cancel</button>
+					if data.Block {
+						<button class="ef-btn ef-btn--filled ef-btn--disabled ef-p6-16" disabled title="One thing to fix first">
+							Save · 1 to fix
+						</button>
+					} else {
+						<button
+							class="ef-btn ef-btn--filled ef-p6-16"
+							data-attr:disabled="!$newrulephrase || $newrulephrase.trim() === ''"
+							data-style:opacity="(!$newrulephrase || $newrulephrase.trim() === '') && '0.5'"
+							data-on:click={ branchkit.MethodPost("settings/rules/editor-save", "") }
+						>
+							if data.IsNew {
+								Save command
+							} else if data.IsOverride {
+								Save my version
+							} else {
+								Save changes
+							}
+						</button>
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+// lockedHead names the selected command the way a catalog row does.
+templ lockedHead(data EditorView) {
+	<div class="ef-head">
+		<div class="ef-title">
+			<code class="ef-title-phrase">{ data.Phrase }</code>
+			if data.IsUser {
+				<span class="badge badge-user">User</span>
+			}
+		</div>
+		if data.PluginName != "" {
+			<span class="ef-hint">{ data.PluginName }</span>
+		}
+	</div>
+}
+
+// startFrom is the first screen of a new command: a copy of the selected
+// command, one of the everyday shapes, or blank. "Like that one, but say it
+// my way" is the first real command most people make.
+templ startFrom(data EditorView) {
+	<div class="ef-hint ef-hint--mb8">Start from…</div>
+	<div class="ef-start">
+		if data.StartCopyOf != "" {
+			<button
+				class="ef-card ef-card--wide"
+				data-on:click={ branchkit.MethodPost("settings/rules/editor-start", ui.Args("from", "copy", "canonical", data.StartCopyOf)) }
+			>
+				<span class="ef-card-t">A copy of <code>{ data.StartCopyOf }</code></span>
+				<span class="ef-card-d">Same action, your own phrase. The fastest way to add a synonym.</span>
+			</button>
+		}
+		for _, e := range data.StartShapes {
+			<button
+				class="ef-card"
+				data-on:click={ branchkit.MethodPost("settings/rules/editor-start", ui.Args("from", "shape", "type", e.Value)) }
+			>
+				<span class="ef-card-t">{ e.Label }</span>
+				<span class="ef-card-d ef-card-d--mono">{ e.Example }</span>
+			</button>
+		}
+	</div>
+	<button
+		class="ef-fold"
+		data-on:click={ "@post('" + branchkit.MethodURL("settings/rules/editor-start") + "', {payload: {from: 'blank'}})" }
+	>
+		<span class="ef-fold-arrow">@templ.Raw("&#8250;")</span>
+		<b>Or start blank</b>
+		<span class="ef-fold-sub">the three questions, empty</span>
+	</button>
+	<div class="ef-footer">
+		<button
+			class="ef-btn ef-p6-16"
+			data-on:click={ branchkit.MethodPost("settings/rules/editor-close", "") }
+		>Cancel</button>
+	</div>
+}
+
+// ---- 1 · When I say ------------------------------------------------------
+
+templ whenISay(data EditorView) {
+	<div class="ef-q">
+		<div class="ef-qh"><span class="ef-qn">1</span><span class="ef-qt">When I say</span></div>
+		if data.Locked {
+			<div class="ef-slots ef-slots--locked">
+				for _, slot := range data.PhraseSlots {
+					if slot.IsList {
+						<span class="ef-slot-static ef-slot-static--list">{ "‹" + slot.Display + "›" + slot.Repeat }</span>
+					} else if slot.IsAlternatives {
+						<span class="ef-slot-static ef-slot-static--alt">{ slot.Value }</span>
+					} else {
+						<span class="ef-slot-static">{ slot.Value }</span>
+					}
+				}
+			</div>
+		} else if data.ShowRawPhrase {
+			<input
+				type="text"
+				placeholder="e.g. open terminal"
+				class="ef-box ef-box--wide ef-box--mono"
+				data-bind:newRulePhrase
+				data-on:input__debounce.500ms={ "$trigger = 'phrase'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+			/>
+			<div class="ef-hint ef-hint--mt4">Raw phrase — the builder is under Details.</div>
+		} else {
+			<div class="ef-slots">
+				for _, slot := range data.PhraseSlots {
+					@phraseSlot(slot)
+				}
+			</div>
+			if lastSlotRepeats(data.PhraseSlots) {
+				<div class="ef-plusrow">
+					<span class="ef-hint">The last blank repeats, so it stays last. Set it to “exactly one” to add more after it.</span>
+				</div>
+			} else {
+				<div class="ef-plusrow">
+					<button
+						class="ef-plus"
+						data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("settings/rules/phrase-slot-add") + "', {payload: {after: %d, type: 'literal'}})", len(data.PhraseSlots)-1) }
+					>+ a word</button>
+					<button
+						class="ef-plus"
+						title="Interchangeable options — saying any one matches"
+						data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("settings/rules/phrase-slot-add") + "', {payload: {after: %d, type: 'alternatives'}})", len(data.PhraseSlots)-1) }
+					>+ options (say any of…)</button>
+					<button
+						class="ef-plus"
+						title="One item from a saved list — the action can use what was said"
+						data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("settings/rules/phrase-slot-add") + "', {payload: {after: %d, type: 'list'}})", len(data.PhraseSlots)-1) }
+					>+ a blank from a list</button>
+				</div>
+			}
+		}
+		if data.ShowNewList {
+			<div class="ef-panel--accent ef-mt6"
+				data-signals="{newListName: '', newListWords: ''}">
+				<div class="ef-subtitle">New list</div>
+				<input
+					type="text"
+					placeholder="list name (e.g. projects)"
+					data-bind="newListName"
+					data-on:input="$newListName = $newListName.toLowerCase().replace(/[^a-z0-9_]/g,'_').replace(/^_+|_+$/g,'').replace(/__+/g,'_')"
+					class="ef-box ef-box--wide ef-p5-8 ef-s12 ef-mb6"
+				/>
+				<textarea
+					placeholder="one word per line&#10;alpha&#10;beta&#10;&#10;optional mapping:  home = https://example.com"
+					data-bind="newListWords"
+					rows="5"
+					class="ef-box ef-box--wide ef-box--mono ef-box--resize ef-p5-8 ef-s12"
+				></textarea>
+				<div class="ef-actions">
+					<button
+						class="ef-btn ef-btn--filled ef-p4-14"
+						data-on:click={ branchkit.MethodPost("settings/rules/slot-new-list", `{name: $newListName, words_text: $newListWords}`) + "; $newListName = ''; $newListWords = ''" }
+					>Create &amp; use</button>
+					<button
+						class="ef-btn ef-p4-12"
+						data-on:click={ branchkit.MethodPost("settings/rules/slot-new-list-cancel", "") + "; $newListName = ''; $newListWords = ''" }
+					>Cancel</button>
+				</div>
+			</div>
+		}
+		// The conflict and mishearing lines are authoring signals; the locked
+		// inspector describes the record and leaves them for Customize.
+		if !data.Locked {
+			if data.Preview.Show && data.Preview.Kind == "conflict" {
+				// A collision REFUSES — and offers the three ways out. A mishearing
+				// (below) only warns.
+				<div class="ef-refuse">
+					<div class="ef-refuse-msg">
+						// On its own line: `@templ.Raw(...) { … }` would read the
+						// message as the call's children and drop it.
+						@templ.Raw("&#10007; ")
+						{ data.Preview.Message }
+					</div>
+					<div class="ef-plusrow">
+						if data.Preview.Existing != "" {
+							<button
+								class="ef-plus"
+								title="Open the existing command and change it instead of adding a twin"
+								data-on:click={ branchkit.MethodPost("settings/rules/editor-open", ui.Args("canonical", data.Preview.Existing)) }
+							>Customize the existing one</button>
+						}
+						if !data.ShowApp {
+							<button
+								class="ef-plus"
+								title="Two commands can share a phrase when only one is live in the app"
+								data-on:click={ "@post('" + branchkit.MethodURL("settings/rules/editor-reveal") + "', {payload: {section: 'app', show: true}})" }
+							>Only in an app</button>
+						}
+						<span class="ef-plus ef-plus--hint">or change the phrase</span>
+					</div>
+				</div>
+			} else if data.Preview.Show {
+				<div class={ "ef-preview ef-preview--mt8 " + previewClass(data.Preview.Kind) }>
+					{ data.Preview.Message }
+				</div>
+			}
+			for _, c := range data.Confusables {
+				<div class="ef-warn ef-warn--mt6">
+					@templ.Raw("&#9888; ")
+					{ c.Message }
+				</div>
+			}
+		}
+	</div>
+}
+
+templ phraseSlot(slot PhraseSlotView) {
+	<div class="ef-slot">
+		if slot.IsRaw {
+			// A named or dependent blank: one locked piece. Details → Raw phrase
+			// is where it changes; nothing here can mangle it.
+			<span
+				class="ef-slot-static ef-slot-static--list"
+				title="A blank the builder cannot draw — change it under Details → Raw phrase"
+			>{ "‹" + slot.Display + "›" + slot.Repeat }</span>
+			<button
+				class="ef-btn ef-btn--bare ef-p0-2 ef-s10"
+				title="Remove"
+				data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("settings/rules/phrase-slot-remove") + "', {payload: {index: %d}})", slot.Index) }
+			>
+				@templ.Raw("&#10005;")
+			</button>
+		} else if slot.IsLiteral {
+			<input
+				type="text"
+				placeholder="word"
+				value={ slot.Value }
+				data-signals={ ui.Args(fmt.Sprintf("slotval%d", slot.Index), slot.Value) }
+				data-bind={ fmt.Sprintf("slotval%d", slot.Index) }
+				class="ef-slot-input"
+				style={ slotInputWidth(slot.Value) }
+				data-on:input__debounce.300ms={ branchkit.MethodPost("settings/rules/phrase-slot-update", ui.Args("index", slot.Index, "type", "literal", "value", ui.Expr("el.value"), "repeat", "")) }
+				data-on:blur={ branchkit.MethodPost("settings/rules/phrase-slot-update", ui.Args("index", slot.Index, "type", "literal", "value", ui.Expr("el.value"), "repeat", "")) }
+			/>
+		} else if slot.IsAlternatives {
+			<input
+				type="text"
+				placeholder="refresh, reload"
+				title="Interchangeable options — saying any one matches. Separate with commas; multi-word options are fine (e.g. new line, return)."
+				value={ slot.Value }
+				data-signals={ ui.Args(fmt.Sprintf("slotval%d", slot.Index), slot.Value) }
+				data-bind={ fmt.Sprintf("slotval%d", slot.Index) }
+				class="ef-slot-input ef-slot-input--alt"
+				style={ slotInputWidth(slot.Value) }
+				data-on:input__debounce.300ms={ branchkit.MethodPost("settings/rules/phrase-slot-update", ui.Args("index", slot.Index, "type", "alternatives", "value", ui.Expr("el.value"), "repeat", "")) }
+				data-on:blur={ branchkit.MethodPost("settings/rules/phrase-slot-update", ui.Args("index", slot.Index, "type", "alternatives", "value", ui.Expr("el.value"), "repeat", "")) }
+			/>
+		} else {
+			<select
+				class="ef-slot-alt"
+				data-on:change={ branchkit.MethodPost("settings/rules/phrase-slot-update", ui.Args("index", slot.Index, "type", "list", "value", ui.Expr("el.value"), "repeat", slot.Repeat)) }
+			>
+				for _, opt := range slot.ListOptions {
+					<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+				}
+			</select>
+			<select
+				class="ef-box ef-p3-2 ef-s10 ef-dim-text ef-auto"
+				data-on:change={ branchkit.MethodPost("settings/rules/phrase-slot-update", ui.Args("index", slot.Index, "type", "list", "value", slot.Value, "repeat", ui.Expr("el.value"))) }
+			>
+				for _, opt := range slot.RepeatOptions {
+					<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+				}
+			</select>
+		}
+		if !slot.IsRaw {
+			<select
+				class="ef-box ef-p3-2 ef-s10 ef-dim-text ef-auto"
+				title="What can be said here — Word (an exact word), Options (one of a few choices), or List (one from a saved list)"
+				data-on:change={ branchkit.MethodPost("settings/rules/phrase-slot-update", ui.Args("index", slot.Index, "type", ui.Expr("el.value"), "value", "", "repeat", "")) }
+			>
+				for _, opt := range slot.TypeOptions {
+					<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+				}
+			</select>
+			<button
+				class="ef-btn ef-btn--bare ef-p0-2 ef-s10"
+				title="Remove"
+				data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("settings/rules/phrase-slot-remove") + "', {payload: {index: %d}})", slot.Index) }
+			>
+				@templ.Raw("&#10005;")
+			</button>
+		}
+	</div>
+}
+
+// ---- 2 · It does ---------------------------------------------------------
+
+templ itDoes(data EditorView) {
+	<div class="ef-q">
+		<div class="ef-qh">
+			<span class="ef-qn">2</span><span class="ef-qt">It does</span>
+			if data.ShowSequence {
+				<span class="ef-qs">{ fmt.Sprintf("%d steps, in order", len(data.SeqSteps)) }</span>
+			}
+		</div>
+		if data.Locked {
+			<div class="ef-does">
+				<span class="ef-pick ef-pick--static">
+					<span class="ef-pick-face">{ data.Picker.Current }</span>
+					if data.Picker.CurrentSub != "" {
+						<span class="ef-pick-sub">{ data.Picker.CurrentSub }</span>
+					}
+				</span>
+				if data.ShowSimple && data.ValueText != "" {
+					<code class="ef-value">{ data.ValueText }</code>
+				}
+			</div>
+			if data.ShowTemplate {
+				<div class="ef-col ef-mt8">
+					for _, f := range data.TmplFields {
+						if !f.ShowInput || f.Val != "" {
+							<div class="ef-cond">
+								<span class="ef-cond-k ef-cond-k--sm">{ f.Label }</span>
+								if f.ShowInput {
+									<code class="ef-value">{ f.Val }</code>
+								} else {
+									<span class="ef-bind">{ f.ModeLabel }</span>
+								}
+							</div>
+						}
+					}
+				</div>
+			}
+			if data.ShowRaw {
+				<pre class="ef-raw">{ data.ActionJSON }</pre>
+			}
+			if data.ShowSequence {
+				<div class="ef-col ef-col--6 ef-mt8">
+					for _, step := range data.SeqSteps {
+						<div class="ef-cond">
+							<span class="ef-qn">{ fmt.Sprintf("%d", step.Index+1) }</span>
+							<span class="ef-pick ef-pick--static"><span class="ef-pick-face">{ step.TypeLabel }</span></span>
+							if step.Val != "" {
+								<code class="ef-value">{ step.Val }</code>
+							}
+						</div>
+					}
+				</div>
+			}
+		} else {
+		<div class="ef-does">
+			@actionPicker(data)
+			if data.ShowSimple {
+				if data.ShowLaunchPicker {
+					<select
+						class="ef-box ef-box--grow"
+						title={ data.SimpleLabel }
+						data-signals:newruleactionval={ ui.JS(data.ActionVal) }
+						data-bind:newRuleActionVal
+					>
+						for _, opt := range data.LaunchOptions {
+							<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+						}
+					</select>
+				} else if data.Recording {
+					<input
+						id="newRuleActionInput"
+						type="text"
+						class="recording-pulse ef-box ef-box--grow ef-box--mono"
+						placeholder="Press a key..."
+						data-signals:newruleactionval={ ui.JS(data.ActionVal) }
+						data-bind:newRuleActionVal
+						data-on:keydown={ "evt.preventDefault(); evt.stopPropagation(); " + branchkit.MethodPost("settings/rules/editor-record-keydown", `{code: evt.code, key: evt.key, ctrl: evt.ctrlKey, alt: evt.altKey, shift: evt.shiftKey, meta: evt.metaKey}`) }
+						data-on:blur={ branchkit.MethodPost("settings/rules/editor-record-stop", "") }
+					/>
+				} else {
+					<input
+						id="newRuleActionInput"
+						type="text"
+						title={ data.SimpleLabel }
+						placeholder={ data.SimplePh }
+						class="ef-box ef-box--grow ef-box--mono"
+						data-signals:newruleactionval={ ui.JS(data.ActionVal) }
+						data-bind:newRuleActionVal
+					/>
+				}
+				if data.ShowRecord {
+					if data.Recording {
+						<button
+							class="ef-btn ef-btn--accent ef-btn--input-bg ef-btn--nowrap ef-p6-10 recording-active"
+							data-on:click={ branchkit.MethodPost("settings/rules/editor-record-stop", "") }
+						>Stop</button>
+					} else {
+						<button
+							class="ef-btn ef-btn--accent ef-btn--input-bg ef-btn--nowrap ef-p6-10"
+							title="Press the keys instead of typing their names"
+							data-on:click={ branchkit.MethodPost("settings/rules/editor-record-start", "") }
+						>Record</button>
+					}
+				}
+			}
+		</div>
+		if data.ShowTemplate {
+			<!-- Structured action fields (auto-shown when phrase has captures) -->
+			<div class="ef-col ef-mt8">
+				for _, f := range data.TmplFields {
+					<div>
+						<label class="ef-label">{ f.Label }</label>
+						<div class="ef-row" data-signals={ ui.Args(fmt.Sprintf("tmplf%dmode", f.Index), f.Mode) }>
+							if f.IsRawBinding {
+								<span class="ef-bind" title="A binding the builder cannot draw — change it under Details → Raw action">{ f.ModeLabel }</span>
+							} else if !f.HideModeSelect {
+								// Fixed, or from a blank: one chip per choice; with two blanks
+								// the chip names which.
+								<span class="ef-seg">
+									for _, opt := range f.ModeOptions {
+										<button
+											class={ "ef-seg-item", templ.KV("ef-seg-item--on", opt.Selected) }
+											data-on:click={ fmt.Sprintf("$tmplf%dmode = ", f.Index) + ui.JS(opt.Value) + "; $trigger = 'tmpl_field'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+										>{ opt.Label }</button>
+									}
+								</span>
+							}
+							if f.ShowInput {
+								if f.ShowRecord && f.Recording {
+									<input
+										type="text"
+										class="recording-pulse ef-box ef-box--grow ef-box--mono ef-p4-6 ef-s12"
+										placeholder="Press a key..."
+										readonly
+										value={ f.Val }
+										data-bind={ fmt.Sprintf("tmplf%dval", f.Index) }
+										data-on:keydown={ "evt.preventDefault(); evt.stopPropagation(); " + branchkit.MethodPost("settings/rules/editor-record-keydown", `{code: evt.code, key: evt.key, ctrl: evt.ctrlKey, alt: evt.altKey, shift: evt.shiftKey, meta: evt.metaKey}`) }
+										data-on:blur={ branchkit.MethodPost("settings/rules/editor-record-stop", "") }
+									/>
+								} else {
+									<input
+										type="text"
+										placeholder={ f.Placeholder }
+										value={ f.Val }
+										class="ef-box ef-box--grow ef-box--mono ef-p4-6 ef-s12"
+										data-bind={ fmt.Sprintf("tmplf%dval", f.Index) }
+										data-on:input__debounce.300ms={ "$trigger = 'tmpl_field'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+									/>
+								}
+							}
+							if f.ShowRecord {
+								if f.Recording {
+									<button
+										class="ef-btn ef-btn--accent ef-btn--input-bg ef-btn--nowrap ef-s11 recording-active"
+										data-on:click={ branchkit.MethodPost("settings/rules/editor-record-stop", "") }
+									>Stop</button>
+								} else {
+									<button
+										class="ef-btn ef-btn--accent ef-btn--input-bg ef-btn--nowrap ef-s11"
+										data-on:click={ branchkit.MethodPost("settings/rules/editor-record-start", "") }
+									>Record</button>
+								}
+							}
+						</div>
+					</div>
+				}
+			</div>
+		}
+		if data.ShowRaw {
+			<!-- Raw JSON: what the builder cannot draw -->
+			<div class="ef-mt8">
+				<div class="ef-head ef-head--mb4">
+					<label class="ef-hint">Raw action</label>
+					<button
+						class="ef-btn ef-btn--accent ef-p2-8 ef-s11"
+						data-on:click={ "$trigger = 'raw_toggle'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+					>Structured</button>
+				</div>
+				<textarea
+					class="ef-box ef-box--wide ef-box--mono ef-box--resize ef-s12 ef-minh80"
+					data-signals:newruleactionjson={ ui.JS(data.ActionJSON) }
+					data-bind:newRuleActionJson
+				></textarea>
+			</div>
+		}
+		if data.ShowSequence {
+			<div class="ef-col ef-col--6 ef-mt8">
+				for _, step := range data.SeqSteps {
+					<div class="seq-step">
+						<span class="ef-qn ef-hint--w20">{ fmt.Sprintf("%d", step.Index+1) }</span>
+						<span class="ef-seq-move">
+							<button
+								class="ef-btn ef-btn--bare ef-p0-2 ef-s10"
+								title="Move up"
+								disabled?={ step.IsFirst }
+								data-on:click={ fmt.Sprintf("$seqRemoveIdx = %d; $seqMoveDir = -1; $trigger = 'seq_move'; @post('" + branchkit.MethodURL("settings/rules/editor-update") + "')", step.Index) }
+							>@templ.Raw("&#9650;")</button>
+							<button
+								class="ef-btn ef-btn--bare ef-p0-2 ef-s10"
+								title="Move down"
+								disabled?={ step.IsLast }
+								data-on:click={ fmt.Sprintf("$seqRemoveIdx = %d; $seqMoveDir = 1; $trigger = 'seq_move'; @post('" + branchkit.MethodURL("settings/rules/editor-update") + "')", step.Index) }
+							>@templ.Raw("&#9660;")</button>
+						</span>
+						<select
+							class="ef-box ef-p4-6 ef-s12"
+							data-signals={ ui.Args(fmt.Sprintf("seq%dtype", step.Index), step.TypeOptions[0].Value) }
+							data-bind={ fmt.Sprintf("seq%dtype", step.Index) }
+							data-on:change={ "$trigger = 'seq_field'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+						>
+							for _, g := range data.SeqTypeGroups {
+								<optgroup label={ g.Label }>
+									for _, opt := range g.Options {
+										<option value={ opt.Value } selected?={ opt.Value == step.TypeOptions[0].Value }>{ opt.Label }</option>
+									}
+								</optgroup>
+							}
+						</select>
+						<input
+							type="text"
+							placeholder={ step.Placeholder }
+							value={ step.Val }
+							class="ef-box ef-box--grow ef-box--mono ef-p4-6 ef-s12"
+							data-signals={ ui.Args(fmt.Sprintf("seq%dval", step.Index), step.Val) }
+							data-bind={ fmt.Sprintf("seq%dval", step.Index) }
+						/>
+						<button
+							class="ef-btn ef-btn--bare ef-p0-2 ef-s10"
+							title="Remove step"
+							data-on:click={ fmt.Sprintf("$seqRemoveIdx = %d; $trigger = 'seq_remove'; @post('" + branchkit.MethodURL("settings/rules/editor-update") + "')", step.Index) }
+						>
+							@templ.Raw("&#10005;")
+						</button>
+					</div>
+				}
+			</div>
+			if data.SeqCanAdd {
+				<div class="ef-plusrow">
+					<button
+						class="ef-plus"
+						data-on:click={ "$trigger = 'seq_add'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+					>+ add a step</button>
+				</div>
+			}
+		}
+		if data.CanAddStep {
+			<div class="ef-plusrow">
+				<button
+					class="ef-plus"
+					title="Do more than one thing, in order"
+					data-on:click={ "$trigger = 'seq_from_simple'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+				>+ add a step</button>
+			</div>
+		}
+		}
+	</div>
+}
+
+// actionPicker is the closed face and the popover: the everyday shapes,
+// then every plugin's declared actions under the plugin's name, searchable.
+templ actionPicker(data EditorView) {
+	<div
+		class="ef-pickwrap"
+		data-signals:newruleactiontype={ ui.JS(data.ActionType) }
+	>
+		<button
+			class="ef-pick"
+			data-on:click="$pickerOpen = !$pickerOpen"
+		>
+			<span class="ef-pick-face">{ data.Picker.Current }</span>
+			if data.Picker.CurrentSub != "" {
+				<span class="ef-pick-sub">{ data.Picker.CurrentSub }</span>
+			}
+			<span class="ef-pick-caret">@templ.Raw("&#8964;")</span>
+		</button>
+		// The inline display:none stays on these two: datastar reveals by
+		// REMOVING the inline display, so a class saying display: none would
+		// take over at that moment and the picker would never open.
+		<div
+			data-show="$pickerOpen"
+			data-on:click="$pickerOpen = false; $pickSearch = ''"
+			class="ef-scrim" aria-hidden="true" style="display: none;"
+		></div>
+		<div
+			data-show="$pickerOpen"
+			class="ef-menu ef-menu--below ef-menu--picker" style="display: none;"
+		>
+			<input
+				type="text"
+				placeholder={ fmt.Sprintf("Search everything a plugin can do… (%d)", data.Picker.Total) }
+				data-bind="pickSearch"
+				class="ef-menu-search"
+			/>
+			<div data-show="$pickSearch == ''" class="ef-menu-group">Everyday</div>
+			<div class="ef-shapes" data-show="$pickSearch == ''">
+				for _, e := range data.Picker.Everyday {
+					<button
+						class={ "ef-shape", templ.KV("ef-shape--on", e.Selected) }
+						data-on:click={ "$pickerOpen = false; $pickSearch = ''; $newruleactiontype = " + ui.JS(e.Value) + "; $trigger = 'action_type'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+					>
+						<span class="ef-shape-t">{ e.Label }</span>
+						<span class="ef-shape-e">{ e.Example }</span>
+					</button>
+				}
+			</div>
+			for _, g := range data.Picker.Groups {
+				<div
+					data-show="$pickSearch == ''"
+					class="ef-menu-group"
+				>{ g.Plugin } <span class="ef-normal-case">{ fmt.Sprintf("· %d", len(g.Entries)) }</span></div>
+				for _, e := range g.Entries {
+					<div
+						role="menuitem" tabindex="0"
+						data-show={ "$pickSearch == '' || " + ui.JS(e.Match) + ".includes($pickSearch.toLowerCase())" }
+						class={ "ef-menu-item", templ.KV("ef-menu-item--on", e.Selected) }
+						data-on:click={ "$pickerOpen = false; $pickSearch = ''; $newruleactiontype = " + ui.JS(e.Value) + "; $trigger = 'action_type'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+					>
+						<div class="ef-menu-item-name">
+							{ e.Label }
+							<span class="ef-menu-item-owner" data-show="$pickSearch != ''">{ g.Plugin }</span>
+						</div>
+					</div>
+				}
+			}
+		</div>
+	</div>
+}
+
+// ---- 3 · Only when -------------------------------------------------------
+
+templ onlyWhen(data EditorView) {
+	<div class="ef-q">
+		<div class="ef-qh"><span class="ef-qn">3</span><span class="ef-qt">Only when</span>
+			if !data.Locked {
+				<span class="ef-qs">optional</span>
+			}
+		</div>
+		if data.Locked {
+			if data.OnlyWhenEmpty {
+				<div class="ef-resting">anywhere — no mode required</div>
+			}
+			if data.ShowApp {
+				<div class="ef-cond"><span class="ef-cond-k">In app</span><code class="ef-value">{ data.AppLabel }</code></div>
+			}
+			if data.ShowMode && len(data.TagFields) > 0 {
+				<div class="ef-cond"><span class="ef-cond-k">In mode</span>@staticChips(data.TagFields[0])</div>
+			}
+			if data.ShowAfter && len(data.TagFields) > 2 {
+				<div class="ef-after">
+					<span class="ef-after-k">Afterwards</span>
+					if len(data.TagFields[1].Chips) > 0 {
+						<div class="ef-cond"><span class="ef-cond-k ef-cond-k--sm">enters</span>@staticChips(data.TagFields[1])</div>
+					}
+					if len(data.TagFields[2].Chips) > 0 {
+						<div class="ef-cond"><span class="ef-cond-k ef-cond-k--sm">leaves</span>@staticChips(data.TagFields[2])</div>
+					}
+				</div>
+			}
+		} else {
+		if data.OnlyWhenEmpty {
+			<div class="ef-resting">anywhere, for now</div>
+		}
+		if data.ShowApp {
+			<div class="ef-cond">
+				<span class="ef-cond-k">In app</span>
+				<select
+					class="ef-box ef-box--grow"
+					data-signals:newruleapp={ ui.JS(data.AppScope) }
+					data-bind:newRuleApp
+					data-on:change={ "$trigger = 'app_scope'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+				>
+					for _, opt := range data.AppOptions {
+						<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+					}
+				</select>
+				<button
+					class="ef-btn ef-btn--bare ef-p0-2 ef-s10"
+					title="Any app"
+					data-on:click={ "@post('" + branchkit.MethodURL("settings/rules/editor-reveal") + "', {payload: {section: 'app', show: false}})" }
+				>
+					@templ.Raw("&#10005;")
+				</button>
+			</div>
+		}
+		if data.ShowMode && len(data.TagFields) > 0 {
+			<div class="ef-cond ef-cond--rel">
+				<span class="ef-cond-k">In mode</span>
+				@tagChips(data.TagFields[0], "+ add")
+				@tagMenu(data.TagFields[0])
+			</div>
+		}
+		if data.ShowAfter && len(data.TagFields) > 2 {
+			<div class="ef-after">
+				<span class="ef-after-k">Afterwards</span>
+				<div class="ef-cond ef-cond--rel">
+					<span class="ef-cond-k ef-cond-k--sm">enters</span>
+					@tagChips(data.TagFields[1], "+ a mode")
+					@tagMenu(data.TagFields[1])
+				</div>
+				<div class="ef-cond ef-cond--rel">
+					<span class="ef-cond-k ef-cond-k--sm">leaves</span>
+					@tagChips(data.TagFields[2], "+ a mode")
+					@tagMenu(data.TagFields[2])
+				</div>
+			</div>
+		}
+		if !data.ShowApp || !data.ShowMode || !data.ShowAfter {
+			<div class="ef-plusrow">
+				if !data.ShowApp {
+					<button
+						class="ef-plus"
+						data-on:click={ "@post('" + branchkit.MethodURL("settings/rules/editor-reveal") + "', {payload: {section: 'app', show: true}})" }
+					>+ in an app</button>
+				}
+				if !data.ShowMode {
+					<button
+						class="ef-plus"
+						title="Only while a mode is on — modes are the platform's context tags by their declared names"
+						data-on:click={ "$tagPicker0 = true; @post('" + branchkit.MethodURL("settings/rules/editor-reveal") + "', {payload: {section: 'mode', show: true}})" }
+					>+ in a mode</button>
+				}
+				if !data.ShowAfter {
+					<button
+						class="ef-plus"
+						title="What this command switches on or off once it has run"
+						data-on:click={ "@post('" + branchkit.MethodURL("settings/rules/editor-reveal") + "', {payload: {section: 'after', show: true}})" }
+					>+ afterwards: enter or leave a mode</button>
+				}
+			</div>
+		}
+		}
+	</div>
+}
+
+templ staticChips(tf TagFieldView) {
+	<div class="ef-slots--bare">
+		for _, chip := range tf.Chips {
+			<span class="ef-chip">{ chip.Label }</span>
+		}
+	</div>
+}
+
+templ tagChips(tf TagFieldView, addLabel string) {
+	<div class="ef-slots--bare">
+		for _, chip := range tf.Chips {
+			<span class="ef-chip">
+				{ chip.Label }
+				<span
+					role="button" tabindex="0" aria-label={ "Remove " + chip.Name }
+					class="ef-chip-x"
+					data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("settings/rules/editor-tag-remove") + "', {payload: {field: '%s', tag: '%s'}})", tf.FieldName, chip.Name) }
+				>
+					@templ.Raw("&#10005;")
+				</span>
+			</span>
+		}
+		if len(tf.Groups) > 0 {
+			<button
+				class="ef-btn ef-btn--dashed ef-p1-8 ef-s11"
+				data-on:click={ fmt.Sprintf("$%s = !$%s", tf.Signal, tf.Signal) }
+			>{ addLabel }</button>
+		}
+	</div>
+}
+
+templ tagMenu(tf TagFieldView) {
+	if len(tf.Groups) > 0 {
+		// The inline display:none stays on these two: datastar reveals by
+		// REMOVING the inline display, so a class saying display: none
+		// would take over at that moment and the picker would never open.
+		<div
+			data-show={ fmt.Sprintf("$%s", tf.Signal) }
+			data-on:click={ fmt.Sprintf("$%s = false; $%s = ''", tf.Signal, tf.SearchSignal) }
+			class="ef-scrim" aria-hidden="true" style="display: none;"
+		></div>
+		<div
+			data-show={ fmt.Sprintf("$%s", tf.Signal) }
+			class="ef-menu ef-menu--below" style="display: none;"
+		>
+			if tf.ShowSearch {
+				<input
+					type="text"
+					placeholder="Filter…"
+					data-bind={ tf.SearchSignal }
+					class="ef-menu-search"
+				/>
+			}
+			for _, group := range tf.Groups {
+				<div
+					data-show={ fmt.Sprintf("$%s == ''", tf.SearchSignal) }
+					class="ef-menu-group"
+				>{ group.Plugin }</div>
+				for _, tag := range group.Tags {
+					<div
+						role="menuitem" tabindex="0"
+						data-show={ fmt.Sprintf("$%s == '' || ", tf.SearchSignal) + ui.JS(tag.Match) + fmt.Sprintf(".includes($%s.toLowerCase())", tf.SearchSignal) }
+						class="ef-menu-item"
+						data-on:click={ fmt.Sprintf("$%s = false; $%s = ''; ", tf.Signal, tf.SearchSignal) + branchkit.MethodPost("settings/rules/editor-tag-add", ui.Args("field", tf.FieldName, "tag", tag.Name)) }
+					>
+						<div class="ef-menu-item-name">{ tag.Label }</div>
+						if tag.Description != "" {
+							<div class="ef-menu-item-note">{ tag.Description }</div>
+						}
+					</div>
+				}
+			}
+		</div>
+	}
+}
+
+// ---- Details -------------------------------------------------------------
+
+templ details(data EditorView) {
+	if data.Locked {
+		<div class="ef-fold ef-fold--static">
+			<b>Details</b>
+			<span class="ef-fold-sub">
+				if data.PluginName != "" {
+					{ data.PluginName + " · " }
+				}
+				if data.Category != "" {
+					{ data.Category + " · " }
+				}
+				if data.Description != "" {
+					{ "“" + data.Description + "” · " }
+				}
+				if data.IsUser {
+					yours
+				} else {
+					built-in
+				}
+			</span>
+		</div>
+	} else {
+	<button
+		class={ "ef-fold", templ.KV("ef-fold--open", data.ShowDetails) }
+		data-on:click={ "@post('" + branchkit.MethodURL("settings/rules/editor-reveal") + "', {payload: {section: 'details'}})" }
+	>
+		<span class="ef-fold-arrow">@templ.Raw("&#8250;")</span>
+		<b>Details</b>
+		<span class="ef-fold-sub">
+			if data.Category != "" {
+				{ "category " + data.Category + " · " }
+			}
+			description · discovery · raw
+		</span>
+	</button>
+	if data.ShowDetails {
+		<div class="ef-panel">
+			<div class="ef-grid1">
+				<div>
+					<label class="ef-label">Category</label>
+					<input
+						type="text"
+						list="category-list"
+						placeholder="e.g. User, Editing, Navigation..."
+						class="ef-box ef-box--wide"
+						data-signals:newrulecategory={ ui.JS(data.Category) }
+						data-bind:newRuleCategory
+					/>
+					<datalist id="category-list">
+						for _, cat := range data.Categories {
+							<option value={ cat.Value }></option>
+						}
+					</datalist>
+				</div>
+				<div>
+					<label class="ef-label">Description <span class="ef-normal">(shown in HUD)</span></label>
+					<input
+						type="text"
+						placeholder="Optional"
+						class="ef-box ef-box--wide"
+						data-signals:newruledescription={ ui.JS(data.Description) }
+						data-bind:newRuleDescription
+					/>
+				</div>
+				if data.ShowDiscovery {
+					<div>
+						<label class="ef-label">Discovery</label>
+						<select
+							class="ef-box ef-box--wide"
+							data-signals:newrulediscovery={ ui.JS(data.Discovery) }
+							data-bind:newRuleDiscovery
+							data-on:change={ "$trigger = 'discovery'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+						>
+							for _, opt := range data.DiscoveryOptions {
+								<option value={ opt.Value } selected?={ opt.Selected }>{ opt.Label }</option>
+							}
+						</select>
+						<div class="ef-hint ef-hint--mt4">Saying the leading word by itself opens the Discovery HUD listing the choices.</div>
+					</div>
+				}
+				<div class="ef-row ef-row--8">
+					<button
+						class="ef-btn ef-p2-8 ef-s11"
+						data-on:click={ branchkit.MethodPost("settings/rules/phrase-raw-toggle", "") }
+					>
+						if data.ShowRawPhrase {
+							Phrase builder
+						} else {
+							Raw phrase
+						}
+					</button>
+					if data.ShowTemplate {
+						<button
+							class="ef-btn ef-p2-8 ef-s11"
+							data-on:click={ "$trigger = 'raw_toggle'; " + branchkit.MethodPost("settings/rules/editor-update", "") }
+						>Raw action</button>
+					}
+				</div>
+			</div>
+		</div>
+	}
+	}
+}

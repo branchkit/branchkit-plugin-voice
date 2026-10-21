@@ -1,0 +1,92 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "github.com/branchkit/plugin-sdk-go/ui"
+import "fmt"
+import "strings"
+
+templ Phonetics(rows []PhoneticRowView) {
+	<div class="ph-legend">One tile per letter &middot; underline = accuracy &middot; dot = your codeword</div>
+	<bk-grid min-tile="120px" data-signals:open-letter__ifmissing="''">
+		for _, row := range rows {
+			<button
+				type="button"
+				id={ fmt.Sprintf("ph-tile-%s", row.Letter) }
+				class="bk-tile"
+				data-class:on={ fmt.Sprintf("$openLetter === '%s'", row.Letter) }
+				data-on:click={ fmt.Sprintf("$openLetter = ($openLetter === '%s' ? '' : '%s'); $editingLetter = ''", row.Letter, row.Letter) }
+			>
+				<span class="bk-tile-key">{ row.Letter }</span>
+				<span class="bk-tile-val">{ row.Word }</span>
+				if strings.HasSuffix(row.ScoreText, "%") {
+					<span class={ "bk-tile-meter", templ.KV("warn", row.ScoreClass != "score-green") }><i style={ "width:" + row.ScoreText }></i></span>
+				}
+				if row.IsOverride {
+					<span class="bk-tile-dot" title={ "your codeword — " + row.TierText }></span>
+				}
+			</button>
+			<div
+				id={ fmt.Sprintf("ph-drawer-%s", row.Letter) }
+				class="bk-drawer"
+				style="display:none"
+				data-show={ fmt.Sprintf("$openLetter === '%s'", row.Letter) }
+			>
+				<span class="bk-drawer-id">{ row.Letter }</span>
+				<div class="ph-drawer-word">
+					<div id={ fmt.Sprintf("ph-edit-%s", row.Letter) } data-show={ fmt.Sprintf("$editingLetter === '%s'", row.Letter) }>
+						<div class="edit-inline">
+							<input
+								type="text"
+								id={ fmt.Sprintf("edit-word-%s", row.Letter) }
+								value={ row.Word }
+								data-on:keydown={ "evt.key === 'Enter' && (" + branchkit.MethodPost("settings/phonetics/override", ui.Args("letter", row.Letter, "word", ui.Expr("el.value"))) + ", $editingLetter = ''); evt.key === 'Escape' && ($editingLetter = '')" }
+							/>
+							<button
+								id={ fmt.Sprintf("ph-save-%s", row.Letter) }
+								class="edit-save"
+								title="Save (Enter)"
+								data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("settings/phonetics/override") + "', {payload: {letter: '%s', word: document.getElementById('edit-word-%s').value}}); $editingLetter = ''", row.Letter, row.Letter) }
+							>&#10003;</button>
+							<button
+								id={ fmt.Sprintf("ph-cancel-%s", row.Letter) }
+								class="edit-cancel"
+								title="Cancel (Esc)"
+								data-on:click="$editingLetter = ''"
+							>&#10005;</button>
+						</div>
+					</div>
+					<div id={ fmt.Sprintf("ph-view-%s", row.Letter) } data-show={ fmt.Sprintf("$editingLetter !== '%s'", row.Letter) }>
+						<div class="editable-cell">
+							<span>{ row.Word }</span>
+							<button
+								class="icon-btn edit-btn"
+								title="Edit codeword"
+								data-on:click={ fmt.Sprintf("$editingLetter = '%s'", row.Letter) }
+							>&#9998;</button>
+						</div>
+					</div>
+				</div>
+				if row.MisheardHint != "" {
+					<span id={ fmt.Sprintf("ph-score-%s", row.Letter) } class={ "score-tag " + row.ScoreClass } title={ row.MisheardHint }>{ row.ScoreText }</span>
+				} else {
+					<span id={ fmt.Sprintf("ph-score-%s", row.Letter) } class={ "score-tag " + row.ScoreClass }>{ row.ScoreText }</span>
+				}
+				<span class="sp"></span>
+				<button
+					class="icon-btn"
+					title="Test this codeword"
+					data-on:click={ branchkit.MethodPost("calibrate", ui.Args("action", "start", "words", []string{row.Word})) }
+				>&#9654;</button>
+				if row.IsOverride {
+					<button
+						class="icon-btn"
+						title="Reset to default"
+						data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("settings/phonetics/reset") + "', {payload: {letter: '%s'}})", row.Letter) }
+					>&#8634;</button>
+				}
+				<span class={ "badge " + row.BadgeClass }>{ row.TierText }</span>
+			</div>
+		}
+	</bk-grid>
+}
+

@@ -1,0 +1,896 @@
+diff --git a/sherpa-onnx/c-api/c-api.cc b/sherpa-onnx/c-api/c-api.cc
+index db10693..888585b 100644
+--- a/sherpa-onnx/c-api/c-api.cc
++++ b/sherpa-onnx/c-api/c-api.cc
+@@ -23,6 +23,7 @@
+ #include "sherpa-onnx/csrc/display.h"
+ #include "sherpa-onnx/csrc/file-utils.h"
+ #include "sherpa-onnx/csrc/grammar-builder.h"
++#include "sherpa-onnx/csrc/interactive-threads.h"
+ #include "sherpa-onnx/csrc/keyword-spotter.h"
+ #include "sherpa-onnx/csrc/macros.h"
+ #include "sherpa-onnx/csrc/offline-punctuation.h"
+@@ -718,7 +719,88 @@ const SherpaOnnxOfflineRecognizer *SherpaOnnxCreateOfflineRecognizerWithFstGraph
+ void SherpaOnnxOfflineRecognizerSetGraphFromWords(
+     const SherpaOnnxOfflineRecognizer *recognizer, const char *const *words,
+     int32_t num_words, const float *weights) {
+-  if (!recognizer || !words || num_words <= 0) return;
++  SherpaOnnxOfflineRecognizerInstallGraph(
++      recognizer, SherpaOnnxOfflineRecognizerBuildGraphFromWords(
++                      recognizer, words, num_words, weights));
++}
++
++namespace {
++
++// The C arrays of SherpaOnnxOfflineRecognizer{Set,Build}GraphFromDag as the
++// builder's request: the DAG plus the union words.
++void DagFromArrays(int32_t num_states, int32_t start, const int32_t *arc_from,
++                   const char *const *arc_word, const int32_t *arc_to,
++                   const float *arc_weight, int32_t num_arcs,
++                   const int32_t *open_states, int32_t num_open,
++                   const char *const *open_alphabet_words,
++                   const int32_t *open_alphabet_counts,
++                   const char *const *union_words, int32_t num_union,
++                   sherpa_onnx::GrammarDag *dag, std::vector<std::string> *uw) {
++  dag->num_states = num_states;
++  dag->start = start;
++  if (num_arcs > 0 && arc_from && arc_word && arc_to) {
++    dag->arc_from.reserve(num_arcs);
++    dag->arc_word.reserve(num_arcs);
++    dag->arc_to.reserve(num_arcs);
++    if (arc_weight) dag->arc_weight.reserve(num_arcs);
++    for (int32_t i = 0; i < num_arcs; ++i) {
++      dag->arc_from.push_back(arc_from[i]);
++      dag->arc_word.emplace_back(arc_word[i] ? arc_word[i] : "");
++      dag->arc_to.push_back(arc_to[i]);
++      if (arc_weight) dag->arc_weight.push_back(arc_weight[i]);
++    }
++  }
++  if (num_open > 0 && open_states) {
++    dag->open_states.assign(open_states, open_states + num_open);
++    // [BranchKit narrowing] Per-open-state bounded alphabet, flattened with a
++    // parallel per-state count array (count 0 = unbounded → full-alphabet loop).
++    if (open_alphabet_counts && open_alphabet_words) {
++      dag->open_alphabets.resize(num_open);
++      int32_t off = 0;
++      for (int32_t i = 0; i < num_open; ++i) {
++        int32_t cnt = open_alphabet_counts[i];
++        for (int32_t j = 0; j < cnt; ++j) {
++          const char *w = open_alphabet_words[off + j];
++          if (w) dag->open_alphabets[i].emplace_back(w);
++        }
++        off += cnt;
++      }
++    }
++  }
++  if (num_union > 0 && union_words) {
++    uw->reserve(num_union);
++    for (int32_t i = 0; i < num_union; ++i) {
++      if (union_words[i]) uw->emplace_back(union_words[i]);
++    }
++  }
++}
++
++}  // namespace
++
++void SherpaOnnxOfflineRecognizerSetGraphFromDag(
++    const SherpaOnnxOfflineRecognizer *recognizer, int32_t num_states,
++    int32_t start, const int32_t *arc_from, const char *const *arc_word,
++    const int32_t *arc_to, const float *arc_weight, int32_t num_arcs,
++    const int32_t *open_states, int32_t num_open,
++    const char *const *open_alphabet_words, const int32_t *open_alphabet_counts,
++    const char *const *union_words, int32_t num_union) {
++  SherpaOnnxOfflineRecognizerInstallGraph(
++      recognizer,
++      SherpaOnnxOfflineRecognizerBuildGraphFromDag(
++          recognizer, num_states, start, arc_from, arc_word, arc_to,
++          arc_weight, num_arcs, open_states, num_open, open_alphabet_words,
++          open_alphabet_counts, union_words, num_union));
++}
++
++// [BranchKit async grammar swap] A built, not yet installed, decoding graph.
++struct SherpaOnnxOfflineGraph {
++  std::unique_ptr<fst::Fst<fst::StdArc>> fst;
++};
++
++SherpaOnnxOfflineGraph *SherpaOnnxOfflineRecognizerBuildGraphFromWords(
++    const SherpaOnnxOfflineRecognizer *recognizer, const char *const *words,
++    int32_t num_words, const float *weights) {
++  if (!recognizer || !words || num_words <= 0) return nullptr;
+   std::vector<std::string> w;
+   std::vector<float> wt;
+   w.reserve(num_words);
+@@ -731,7 +813,50 @@ void SherpaOnnxOfflineRecognizerSetGraphFromWords(
+       if (weights) wt.push_back(weights[i]);
+     }
+   }
+-  recognizer->impl->SetGraphFromWords(w, wt);
++  auto fst = recognizer->impl->BuildGraphFromWords(w, wt);
++  if (!fst) return nullptr;
++  return new SherpaOnnxOfflineGraph{std::move(fst)};
++}
++
++SherpaOnnxOfflineGraph *SherpaOnnxOfflineRecognizerBuildGraphFromDag(
++    const SherpaOnnxOfflineRecognizer *recognizer, int32_t num_states,
++    int32_t start, const int32_t *arc_from, const char *const *arc_word,
++    const int32_t *arc_to, const float *arc_weight, int32_t num_arcs,
++    const int32_t *open_states, int32_t num_open,
++    const char *const *open_alphabet_words, const int32_t *open_alphabet_counts,
++    const char *const *union_words, int32_t num_union) {
++  if (!recognizer || num_states <= 0) return nullptr;
++  sherpa_onnx::GrammarDag dag;
++  std::vector<std::string> uw;
++  DagFromArrays(num_states, start, arc_from, arc_word, arc_to, arc_weight,
++                num_arcs, open_states, num_open, open_alphabet_words,
++                open_alphabet_counts, union_words, num_union, &dag, &uw);
++  auto fst = recognizer->impl->BuildGraphFromDag(dag, uw);
++  if (!fst) return nullptr;
++  return new SherpaOnnxOfflineGraph{std::move(fst)};
++}
++
++void SherpaOnnxOfflineRecognizerInstallGraph(
++    const SherpaOnnxOfflineRecognizer *recognizer,
++    SherpaOnnxOfflineGraph *graph) {
++  if (recognizer && graph) recognizer->impl->InstallGraph(std::move(graph->fst));
++  delete graph;
++}
++
++void SherpaOnnxDestroyOfflineGraph(SherpaOnnxOfflineGraph *graph) {
++  delete graph;
++}
++
++int32_t SherpaOnnxSetInteractiveOrtThreads(int32_t enabled) {
++  return sherpa_onnx::SetInteractiveOrtThreads(enabled != 0) ? 1 : 0;
++}
++
++int32_t SherpaOnnxRaiseCurrentThreadToInteractive() {
++  return sherpa_onnx::RaiseCurrentThreadToInteractive() ? 1 : 0;
++}
++
++void SherpaOnnxInteractiveOrtThreadStats(int32_t *created, int32_t *raised) {
++  sherpa_onnx::InteractiveOrtThreadStats(created, raised);
+ }
+ 
+ void SherpaOnnxOfflineRecognizerSetConfig(
+diff --git a/sherpa-onnx/c-api/c-api.h b/sherpa-onnx/c-api/c-api.h
+index b35d662..dbc2e16 100644
+--- a/sherpa-onnx/c-api/c-api.h
++++ b/sherpa-onnx/c-api/c-api.h
+@@ -1269,6 +1269,92 @@ SHERPA_ONNX_API void SherpaOnnxOfflineRecognizerSetGraphFromWords(
+     const SherpaOnnxOfflineRecognizer *recognizer, const char *const *words,
+     int32_t num_words, const float *weights);
+ 
++// [BranchKit command-grammar compiler — D2] Build a STRUCTURED CTC decoding
++// graph from a word-level pattern-DAG IN-PROCESS and swap it onto an offline
++// recognizer (created with SherpaOnnxCreateOfflineRecognizerWithFstGraph). The
++// DAG comes from the actuator's D1 compiler: a word is reachable only where a
++// command places it, so e.g. "scroll eight" becomes an unwalkable path while
++// "scroll up eight" stays. The graph is carried as parallel arc arrays:
++//   num_states : state count; ids are 0..num_states-1.
++//   start      : start AND sole base accept state (every command-final arc
++//                returns here); normally 0.
++//   arc_from/arc_word/arc_to : `num_arcs` parallel arrays — one (from -> word ->
++//                to) transition each. `arc_word[i]` is a NUL-terminated word.
++//   arc_weight : NULL (unweighted) or `num_arcs` per-arc decoding biases.
++//   open_states: `num_open` state ids whose continuation is unconstrained (free
++//                text / dependent capture / list repeat-optional). Each is made
++//                final with a self-loop over an alphabet (see next).
++//   open_alphabet_words / open_alphabet_counts: [BranchKit narrowing] optional
++//                per-open-state bounded self-loop alphabet. `open_alphabet_counts`
++//                is parallel to `open_states` (a per-state word count); the words
++//                are the flattened concatenation across states in `open_states`
++//                order, read from `open_alphabet_words`. A count of 0 (or NULL
++//                arrays) means that state loops over the whole word alphabet, the
++//                original behavior. A non-empty set restricts the loop to those
++//                words (e.g. a spelling `<letter>+` tail → just the letters).
++//   union_words: `num_union` NUL-terminated words — the full recognition union,
++//                used as the lexicon basis AND the open-state self-loop alphabet
++//                (so a free-text / dynamic hint-suffix tail that arrives via the
++//                union but is not a DAG arc stays decodable). Pass NULL/0 to use
++//                only the DAG's arc words.
++// A no-op unless the recognizer uses the CTC FST decoder.
++SHERPA_ONNX_API void SherpaOnnxOfflineRecognizerSetGraphFromDag(
++    const SherpaOnnxOfflineRecognizer *recognizer, int32_t num_states,
++    int32_t start, const int32_t *arc_from, const char *const *arc_word,
++    const int32_t *arc_to, const float *arc_weight, int32_t num_arcs,
++    const int32_t *open_states, int32_t num_open,
++    const char *const *open_alphabet_words, const int32_t *open_alphabet_counts,
++    const char *const *union_words, int32_t num_union);
++
++// [BranchKit async grammar swap] SetGraphFromWords / SetGraphFromDag split
++// in two, so a slow build never blocks decoding:
++//   Build*      composes the graph and returns it (NULL when the recognizer
++//               does not use the CTC FST decoder, or for empty input). It
++//               touches no decoding state: call it on any thread, including
++//               while another thread decodes with this recognizer. Builds on
++//               one recognizer are serialized internally.
++//   InstallGraph swaps a built graph onto the decoder and CONSUMES `graph`
++//               (do not destroy it afterwards). Call it on the thread that
++//               decodes, between decodes. A NULL graph is a no-op.
++//   DestroyOfflineGraph frees a graph that will not be installed.
++// Arguments are those of the matching Set* function.
++typedef struct SherpaOnnxOfflineGraph SherpaOnnxOfflineGraph;
++
++SHERPA_ONNX_API SherpaOnnxOfflineGraph *
++SherpaOnnxOfflineRecognizerBuildGraphFromWords(
++    const SherpaOnnxOfflineRecognizer *recognizer, const char *const *words,
++    int32_t num_words, const float *weights);
++
++SHERPA_ONNX_API SherpaOnnxOfflineGraph *
++SherpaOnnxOfflineRecognizerBuildGraphFromDag(
++    const SherpaOnnxOfflineRecognizer *recognizer, int32_t num_states,
++    int32_t start, const int32_t *arc_from, const char *const *arc_word,
++    const int32_t *arc_to, const float *arc_weight, int32_t num_arcs,
++    const int32_t *open_states, int32_t num_open,
++    const char *const *open_alphabet_words, const int32_t *open_alphabet_counts,
++    const char *const *union_words, int32_t num_union);
++
++SHERPA_ONNX_API void SherpaOnnxOfflineRecognizerInstallGraph(
++    const SherpaOnnxOfflineRecognizer *recognizer,
++    SherpaOnnxOfflineGraph *graph);
++
++SHERPA_ONNX_API void SherpaOnnxDestroyOfflineGraph(
++    SherpaOnnxOfflineGraph *graph);
++
++// [BranchKit] Interactive-priority inference threads (macOS:
++// QOS_CLASS_USER_INTERACTIVE; Windows: THREAD_PRIORITY_ABOVE_NORMAL; Linux:
++// unsupported). SetInteractiveOrtThreads makes every onnxruntime worker
++// thread of sessions created AFTER the call start at that priority; returns
++// 1 when supported on this OS, else 0. RaiseCurrentThreadToInteractive
++// raises the calling thread (the one that decodes runs part of each encode
++// too); returns 1 when the raise reads back. InteractiveOrtThreadStats
++// reports how many worker threads were created through the hook and how
++// many read back as raised from inside the thread.
++SHERPA_ONNX_API int32_t SherpaOnnxSetInteractiveOrtThreads(int32_t enabled);
++SHERPA_ONNX_API int32_t SherpaOnnxRaiseCurrentThreadToInteractive(void);
++SHERPA_ONNX_API void SherpaOnnxInteractiveOrtThreadStats(int32_t *created,
++                                                         int32_t *raised);
++
+ /**
+  * @brief Update the configuration of an existing offline recognizer.
+  *
+diff --git a/sherpa-onnx/csrc/CMakeLists.txt b/sherpa-onnx/csrc/CMakeLists.txt
+index fd7f243..d818b04 100755
+--- a/sherpa-onnx/csrc/CMakeLists.txt
++++ b/sherpa-onnx/csrc/CMakeLists.txt
+@@ -21,6 +21,7 @@ set(sources
+   file-utils.cc
+   fst-utils.cc
+   grammar-builder.cc
++  interactive-threads.cc
+   homophone-replacer.cc
+   hypothesis.cc
+   keyword-spotter-impl.cc
+diff --git a/sherpa-onnx/csrc/grammar-builder.cc b/sherpa-onnx/csrc/grammar-builder.cc
+index d966d0d..0ab9ca3 100644
+--- a/sherpa-onnx/csrc/grammar-builder.cc
++++ b/sherpa-onnx/csrc/grammar-builder.cc
+@@ -564,4 +564,164 @@ std::unique_ptr<fst::Fst<StdArc>> GrammarBuilder::BuildLazy(
+   return graph;
+ }
+ 
++namespace {
++
++// How many built structured grammars to keep: the full free-context grammar
++// plus the few modes a person moves between. Small modes cost little memory;
++// the full grammar dominates (its size is in the timing log).
++constexpr size_t kDagCacheEntries = 4;
++
++// The exact request a structured grammar is built from, as a cache key: two
++// requests with the same key build the same graph against the same lexicon.
++std::string DagCacheKey(const GrammarDag &dag,
++                        const std::vector<std::string> &union_words) {
++  std::ostringstream os;
++  os << dag.num_states << ' ' << dag.start << '\n';
++  for (size_t i = 0; i < dag.arc_word.size(); ++i) {
++    os << dag.arc_from[i] << ' ' << dag.arc_to[i] << ' ' << dag.arc_word[i];
++    if (i < dag.arc_weight.size()) os << ' ' << dag.arc_weight[i];
++    os << '\n';
++  }
++  for (size_t i = 0; i < dag.open_states.size(); ++i) {
++    os << "o " << dag.open_states[i];
++    if (i < dag.open_alphabets.size()) {
++      for (const auto &w : dag.open_alphabets[i]) os << ' ' << w;
++    }
++    os << '\n';
++  }
++  os << "u";
++  for (const auto &w : union_words) os << ' ' << w;
++  return os.str();
++}
++
++}  // namespace
++
++std::unique_ptr<fst::Fst<StdArc>> GrammarBuilder::BuildFromDagLazy(
++    const GrammarDag &dag, const std::vector<std::string> &union_words) const {
++  auto t_all = Clock::now();
++  std::string key = DagCacheKey(dag, union_words);
++
++  // The CURRENT request's word universe (union + DAG arc words, first-seen
++  // dedup). It feeds the lexicon grow AND bounds the unbounded open-state
++  // self-loops below: looping over the whole accumulated lexicon instead
++  // would silently widen an open tail to words the platform has since
++  // retired or narrowed away.
++  std::vector<std::string> universe;
++  {
++    std::unordered_map<std::string, int32_t> seen;
++    universe.reserve(union_words.size() + dag.arc_word.size());
++    for (const auto &w : union_words) {
++      if (seen.emplace(w, 1).second) universe.push_back(w);
++    }
++    for (const auto &w : dag.arc_word) {
++      if (seen.emplace(w, 1).second) universe.push_back(w);
++    }
++  }
++  bool hl_rebuilt = EnsureLazyHL(universe);
++  if (hl_rebuilt) {
++    dag_cache_.clear();
++  } else {
++    auto hit = std::find_if(dag_cache_.begin(), dag_cache_.end(),
++                            [&](const auto &e) { return e.first == key; });
++    if (hit != dag_cache_.end()) {
++      auto entry = *hit;
++      dag_cache_.erase(hit);
++      dag_cache_.insert(dag_cache_.begin(), entry);
++      if (verbose_) {
++        fprintf(stderr,
++                "[grammar-builder] BuildFromDagLazy(%d states, %zu arcs): "
++                "cached graph (%d states), %.2f ms total\n",
++                dag.num_states, dag.arc_word.size(), entry.second->NumStates(),
++                MsSince(t_all));
++      }
++      return std::make_unique<StdVectorFst>(*entry.second);
++    }
++  }
++
++  // G: the pattern-DAG as a word acceptor, arcs labeled with the lazy word2id
++  // (the ids the cached HL emits). One state per DAG state; the start state is
++  // also the sole base accept state — every command-final arc returns there.
++  // Per-arc weight rides straight on the arc (contextual bias). Open states
++  // (free text / dependent capture / unenumerable tails) become final with a
++  // self-loop over their bounded alphabet when the compiler supplied one, else
++  // over the request universe.
++  auto G = std::make_unique<StdVectorFst>();
++  for (int32_t i = 0; i < dag.num_states; ++i) G->AddState();
++  int32_t n_dropped = 0;
++  if (dag.num_states > 0 && dag.start >= 0 && dag.start < dag.num_states) {
++    G->SetStart(dag.start);
++    G->SetFinal(dag.start, StdArc::Weight::One());
++    for (size_t i = 0; i < dag.arc_word.size(); ++i) {
++      // Endpoint guard, mirroring the open_states check below: the D1
++      // compiler emits valid ids by construction, but an out-of-range id
++      // would index OpenFST's state vector out of bounds (release-mode heap
++      // corruption) — drop the arc instead, counted with the no-BPE drops.
++      if (dag.arc_from[i] < 0 || dag.arc_from[i] >= dag.num_states ||
++          dag.arc_to[i] < 0 || dag.arc_to[i] >= dag.num_states) {
++        ++n_dropped;
++        continue;
++      }
++      auto it = lazy_word2id_.find(dag.arc_word[i]);
++      if (it == lazy_word2id_.end()) {  // no BPE tokens -> dropped from HL
++        ++n_dropped;
++        continue;
++      }
++      int32_t wid = it->second;
++      float wcost = (i < dag.arc_weight.size()) ? dag.arc_weight[i] : 0.0f;
++      G->AddArc(dag.arc_from[i],
++                StdArc(wid, wid, StdArc::Weight(wcost), dag.arc_to[i]));
++    }
++    for (size_t oi = 0; oi < dag.open_states.size(); ++oi) {
++      int32_t s = dag.open_states[oi];
++      if (s < 0 || s >= dag.num_states) continue;
++      G->SetFinal(s, StdArc::Weight::One());
++      const std::vector<std::string> *alpha =
++          (oi < dag.open_alphabets.size() && !dag.open_alphabets[oi].empty())
++              ? &dag.open_alphabets[oi]
++              : nullptr;
++      const std::vector<std::string> &loop_words = alpha ? *alpha : universe;
++      for (const auto &w : loop_words) {
++        auto it = lazy_word2id_.find(w);
++        if (it == lazy_word2id_.end()) continue;
++        G->AddArc(s, StdArc(it->second, it->second, StdArc::Weight::One(), s));
++      }
++    }
++  }
++  // DISTINCT universe words that resolved in the lexicon — the same measure
++  // BuildLazy's `added` gives ComposeLazy.
++  size_t resolved = 0;
++  for (const auto &w : universe) {
++    if (lazy_word2id_.count(w)) ++resolved;
++  }
++  // Always trimmed: a pattern DAG admits only some words at each state, so
++  // its composition has dead ends even when the request covers the whole
++  // lexicon. Left to the subset test, the same DAG composed lazily in a fresh
++  // recognizer and trimmed in one whose lexicon had grown, and the two
++  // decoded the same off-grammar clip differently ("hello there": "" vs
++  // "HELLO BRANCHKIT", measured 2026-09-26). Trimming the full free-context
++  // DAG costs about 0.15 s per swap at ~1.9k words through the lookahead
++  // composition (ComposeTrimmed); expanding it all first took ~12 s.
++  bool narrow = false;
++  auto graph = ComposeLazy(std::move(G), resolved, true, &narrow);
++  // always_trim makes the result a materialized VectorFst.
++  int32_t graph_states = -1;
++  if (auto *built = dynamic_cast<StdVectorFst *>(graph.get())) {
++    graph_states = built->NumStates();
++    dag_cache_.insert(dag_cache_.begin(),
++                      {key, std::make_shared<StdVectorFst>(*built)});
++    if (dag_cache_.size() > kDagCacheEntries) dag_cache_.pop_back();
++  }
++
++  if (verbose_) {
++    fprintf(stderr,
++            "[grammar-builder] BuildFromDagLazy(%d states, %zu arcs, %zu words, "
++            "%d dropped): HL %s, %s (%d states), %.2f ms total\n",
++            dag.num_states, dag.arc_word.size(), universe.size(), n_dropped,
++            hl_rebuilt ? "REBUILT" : "cached",
++            narrow ? "trimmed (narrow)" : "lazy compose",
++            graph_states, MsSince(t_all));
++  }
++  return graph;
++}
++
+ }  // namespace sherpa_onnx
+diff --git a/sherpa-onnx/csrc/grammar-builder.h b/sherpa-onnx/csrc/grammar-builder.h
+index 3dda200..02a40f0 100644
+--- a/sherpa-onnx/csrc/grammar-builder.h
++++ b/sherpa-onnx/csrc/grammar-builder.h
+@@ -18,6 +18,7 @@
+ #include <memory>
+ #include <string>
+ #include <unordered_map>
++#include <utility>
+ #include <vector>
+ 
+ #include "fst/fstlib.h"
+@@ -43,6 +44,28 @@ using TrimLookAheadFst = fst::MatcherFst<
+         fst::DefaultAccumulator<fst::StdArc>>,
+     kTrimLookAheadFstType, fst::LabelLookAheadRelabeler<fst::StdArc>>;
+ 
++// [BranchKit command-grammar compiler — D2] A word-level DAG describing the
++// allowed command word-sequences, compiled in the actuator (Phase D1) from
++// every plugin's cmd.pattern. Carried over the C-API as parallel arrays.
++// `start` is the start AND sole base accept state (0); every command-final arc
++// returns there. `open_states` are states whose continuation could not be
++// enumerated (free text / dependent capture / list repeat-optional) — the
++// builder realizes each as final + a self-loop over the whole word alphabet.
++struct GrammarDag {
++  int32_t num_states = 0;
++  int32_t start = 0;
++  std::vector<int32_t> arc_from;
++  std::vector<std::string> arc_word;
++  std::vector<int32_t> arc_to;
++  std::vector<float> arc_weight;  // empty, or parallel to the arc arrays
++  std::vector<int32_t> open_states;
++  // [BranchKit narrowing] Per-open-state bounded self-loop alphabet, parallel to
++  // `open_states`. An empty inner vector (or a short/absent outer vector) means
++  // "unbounded" — loop over the whole word alphabet, the original behavior.
++  // A non-empty set restricts that state's self-loop to just those words.
++  std::vector<std::vector<std::string>> open_alphabets;
++};
++
+ class GrammarBuilder {
+  public:
+   // tokens_txt : the model's tokens.txt (token -> id, includes disambig #0..).
+@@ -68,6 +91,20 @@ class GrammarBuilder {
+       const std::vector<std::string> &words,
+       const std::vector<float> &weights = {}) const;
+ 
++  // [BranchKit command-grammar compiler — D2] Build a STRUCTURED grammar from
++  // a pattern-DAG: the DAG becomes the word-level G (per-arc weights,
++  // open-tail alphabets), joined with the cached HL like BuildLazy — so only
++  // the DAG's word sequences are decodable ("scroll eight" becomes an
++  // unwalkable path).
++  //
++  // `union_words` is the full recognition union (the same wide word list the
++  // word-list path uses). It is the lexicon basis AND the alphabet open states
++  // loop over — so a free-text / dependent-capture tail (e.g. a hint suffix that
++  // arrives via the union but is not a DAG arc) stays decodable. The DAG's own
++  // arc words are folded in too (defensive); pass empty to use only DAG words.
++  std::unique_ptr<fst::Fst<fst::StdArc>> BuildFromDagLazy(
++      const GrammarDag &dag, const std::vector<std::string> &union_words) const;
++
+  private:
+   std::vector<std::string> WordToTokens(const std::string &word) const;
+ 
+@@ -126,6 +163,16 @@ class GrammarBuilder {
+   // built, and used only by the thread that builds grammars.
+   mutable std::shared_ptr<TrimLookAheadFst> lazy_la_HL_;
+ 
++  // [BranchKit] Recently built structured grammars, most recent first, keyed
++  // by the exact request (DagCacheKey). Entering and leaving a mode flips
++  // between the same few grammars; a hit hands the decoder a copy of the
++  // built graph, which shares its storage (VectorFst copies are
++  // copy-on-write), instead of composing and trimming again. Cleared when
++  // the HL is rebuilt, so every entry was built against the current lexicon.
++  mutable std::vector<
++      std::pair<std::string, std::shared_ptr<fst::VectorFst<fst::StdArc>>>>
++      dag_cache_;
++
+   bool verbose_ = false;
+ };
+ 
+diff --git a/sherpa-onnx/csrc/interactive-threads.cc b/sherpa-onnx/csrc/interactive-threads.cc
+new file mode 100644
+index 0000000..907dedc
+--- /dev/null
++++ b/sherpa-onnx/csrc/interactive-threads.cc
+@@ -0,0 +1,105 @@
++// sherpa-onnx/csrc/interactive-threads.cc
++//
++// [BranchKit] See interactive-threads.h.
++
++#include "sherpa-onnx/csrc/interactive-threads.h"
++
++#include <atomic>
++#include <thread>  // NOLINT
++
++#if defined(__APPLE__)
++#include <pthread.h>
++#include <sys/qos.h>
++#elif defined(_WIN32)
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#endif
++
++namespace sherpa_onnx {
++
++namespace {
++
++std::atomic<bool> g_enabled{false};
++std::atomic<int32_t> g_created{0};
++std::atomic<int32_t> g_raised{0};
++
++constexpr bool kSupported =
++#if defined(__APPLE__) || defined(_WIN32)
++    true;
++#else
++    false;
++#endif
++
++// Whether the calling thread reads back at the raised level.
++bool CurrentThreadIsInteractive() {
++#if defined(__APPLE__)
++  qos_class_t qos = QOS_CLASS_UNSPECIFIED;
++  int relative = 0;
++  if (pthread_get_qos_class_np(pthread_self(), &qos, &relative) != 0) {
++    return false;
++  }
++  return qos == QOS_CLASS_USER_INTERACTIVE;
++#elif defined(_WIN32)
++  return GetThreadPriority(GetCurrentThread()) >= THREAD_PRIORITY_ABOVE_NORMAL;
++#else
++  return false;
++#endif
++}
++
++OrtCustomThreadHandle CreateInteractiveThread(void * /*options*/,
++                                              OrtThreadWorkerFn worker,
++                                              void *param) {
++  auto *t = new std::thread([worker, param]() {
++    bool raised = RaiseCurrentThreadToInteractive();
++    g_created.fetch_add(1);
++    if (raised) g_raised.fetch_add(1);
++    worker(param);
++  });
++  return reinterpret_cast<OrtCustomThreadHandle>(t);
++}
++
++void JoinInteractiveThread(OrtCustomThreadHandle handle) {
++  auto *t = reinterpret_cast<std::thread *>(
++      const_cast<OrtCustomHandleType *>(handle));
++  if (t->joinable()) t->join();
++  delete t;
++}
++
++}  // namespace
++
++bool SetInteractiveOrtThreads(bool enabled) {
++  if (!kSupported) return false;
++  g_enabled.store(enabled);
++  return true;
++}
++
++void ApplyInteractiveThreads(Ort::SessionOptions *opts) {
++  if (!kSupported || !g_enabled.load()) return;
++  opts->SetCustomCreateThreadFn(CreateInteractiveThread);
++  opts->SetCustomJoinThreadFn(JoinInteractiveThread);
++}
++
++bool RaiseCurrentThreadToInteractive() {
++#if defined(__APPLE__)
++  if (pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0) != 0) {
++    return false;
++  }
++#elif defined(_WIN32)
++  // ABOVE_NORMAL, not HIGHEST: onnxruntime's workers spin briefly between
++  // bursts, and a spinning thread above every UI thread on the machine is a
++  // worse trade than the one level this needs.
++  if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL)) {
++    return false;
++  }
++#endif
++  return CurrentThreadIsInteractive();
++}
++
++void InteractiveOrtThreadStats(int32_t *created, int32_t *raised) {
++  if (created) *created = g_created.load();
++  if (raised) *raised = g_raised.load();
++}
++
++}  // namespace sherpa_onnx
+diff --git a/sherpa-onnx/csrc/interactive-threads.h b/sherpa-onnx/csrc/interactive-threads.h
+new file mode 100644
+index 0000000..203abaa
+--- /dev/null
++++ b/sherpa-onnx/csrc/interactive-threads.h
+@@ -0,0 +1,46 @@
++// sherpa-onnx/csrc/interactive-threads.h
++//
++// [BranchKit] Run onnxruntime's worker threads at the OS's interactive
++// priority. A command recognizer's encode is a short burst a person is
++// waiting on, and at default priority it queues behind whatever else the
++// machine is doing (measured: encode p90 350 ms on 1-2 word phrases while
++// other work ran). Raising the process's main thread does not reach the
++// encoder: onnxruntime runs it on intra-op threads it creates itself, and a
++// thread does not inherit its creator's QoS on macOS (probed: a thread made
++// by a QOS_CLASS_USER_INTERACTIVE thread comes up at QOS_CLASS_DEFAULT). So
++// the raise happens inside onnxruntime's thread-creation hook, on every
++// worker it creates.
++//
++// macOS: QOS_CLASS_USER_INTERACTIVE. Windows: THREAD_PRIORITY_ABOVE_NORMAL.
++// Linux: nothing (no unprivileged raise above the default nice level); the
++// switch reports unsupported and no hook is installed.
++
++#ifndef SHERPA_ONNX_CSRC_INTERACTIVE_THREADS_H_
++#define SHERPA_ONNX_CSRC_INTERACTIVE_THREADS_H_
++
++#include <cstdint>
++
++#include "onnxruntime_cxx_api.h"  // NOLINT
++
++namespace sherpa_onnx {
++
++// Process-wide switch, off by default (upstream behavior). Applies to
++// sessions created after the call. Returns false where the OS has no
++// supported raise (the switch then stays off).
++bool SetInteractiveOrtThreads(bool enabled);
++
++// Install the thread-creation hooks on `opts` when the switch is on.
++void ApplyInteractiveThreads(Ort::SessionOptions *opts);
++
++// Raise the calling thread. The thread that calls Decode also runs part of
++// every encode (onnxruntime's caller thread joins its intra-op pool), so it
++// needs the same raise as the workers. Returns true when the raise took.
++bool RaiseCurrentThreadToInteractive();
++
++// How many worker threads the hook created, and how many of those read back
++// as raised from inside the thread itself.
++void InteractiveOrtThreadStats(int32_t *created, int32_t *raised);
++
++}  // namespace sherpa_onnx
++
++#endif  // SHERPA_ONNX_CSRC_INTERACTIVE_THREADS_H_
+diff --git a/sherpa-onnx/csrc/offline-recognizer-ctc-impl.h b/sherpa-onnx/csrc/offline-recognizer-ctc-impl.h
+index 4bf2e92..9d8b68c 100644
+--- a/sherpa-onnx/csrc/offline-recognizer-ctc-impl.h
++++ b/sherpa-onnx/csrc/offline-recognizer-ctc-impl.h
+@@ -7,6 +7,7 @@
+ 
+ #include <ios>
+ #include <memory>
++#include <mutex>  // NOLINT
+ #include <sstream>
+ #include <string>
+ #include <utility>
+@@ -317,8 +318,44 @@ class OfflineRecognizerCtcImpl : public OfflineRecognizerImpl {
+     // a plain graph swap — the next DecodeStreams() uses the new grammar.
+     // `weights` (parallel to `words`, may be empty) carries the per-word
+     // decoding bias straight into the grammar build.
++    InstallGraph(BuildGraphFromWords(words, weights));
++  }
++
++  void SetGraphFromDag(
++      const GrammarDag &dag,
++      const std::vector<std::string> &union_words) const override {
++    // [BranchKit command-grammar compiler — D2] Build a STRUCTURED grammar
++    // (H o L o G) from the pattern-DAG and swap it onto the FST decoder. Same
++    // builder init and decoder replacement as SetGraphFromWords; only the
++    // grammar build differs (BuildFromDagLazy instead of BuildLazy).
++    InstallGraph(BuildGraphFromDag(dag, union_words));
++  }
++
++  // [BranchKit async grammar swap] The build half: touches only the grammar
++  // builder (under build_mutex_), never decoder_ or the model, so it runs
++  // safely beside a decode on another thread. The graph it returns shares
++  // no mutable state with the installed one: a lazy compose holds its own
++  // refcounted copy of the HL, so a later lexicon grow replacing the
++  // builder's HL leaves an installed graph intact.
++  std::unique_ptr<fst::Fst<fst::StdArc>> BuildGraphFromWords(
++      const std::vector<std::string> &words,
++      const std::vector<float> &weights) const override {
++    std::lock_guard<std::mutex> lock(build_mutex_);
+     EnsureGrammarBuilder();
+-    ReplaceDecoder(grammar_builder_->BuildLazy(words, weights));
++    return grammar_builder_->BuildLazy(words, weights);
++  }
++
++  std::unique_ptr<fst::Fst<fst::StdArc>> BuildGraphFromDag(
++      const GrammarDag &dag,
++      const std::vector<std::string> &union_words) const override {
++    std::lock_guard<std::mutex> lock(build_mutex_);
++    EnsureGrammarBuilder();
++    return grammar_builder_->BuildFromDagLazy(dag, union_words);
++  }
++
++  // The install half: a decoder replacement, on the decoding thread.
++  void InstallGraph(std::unique_ptr<fst::Fst<fst::StdArc>> graph) const override {
++    if (graph) ReplaceDecoder(std::move(graph));
+   }
+ 
+  private:
+@@ -399,6 +436,9 @@ class OfflineRecognizerCtcImpl : public OfflineRecognizerImpl {
+   // Lazily built on the first SetGraphFromWords; reused across swaps (the CTC
+   // topo H is cached inside). mutable so the const swap method can init it.
+   mutable std::unique_ptr<GrammarBuilder> grammar_builder_;
++  // [BranchKit async grammar swap] Serializes builds: the builder's lexicon,
++  // HL and graph cache are mutated by every build. Never held by a decode.
++  mutable std::mutex build_mutex_;
+ };
+ 
+ }  // namespace sherpa_onnx
+diff --git a/sherpa-onnx/csrc/offline-recognizer-impl.h b/sherpa-onnx/csrc/offline-recognizer-impl.h
+index aebbc6e..feb401e 100644
+--- a/sherpa-onnx/csrc/offline-recognizer-impl.h
++++ b/sherpa-onnx/csrc/offline-recognizer-impl.h
+@@ -9,6 +9,7 @@
+ #include <string>
+ #include <vector>
+ 
++#include "fst/fst.h"
+ #include "kaldifst/csrc/text-normalizer.h"
+ #include "sherpa-onnx/csrc/homophone-replacer.h"
+ #include "sherpa-onnx/csrc/macros.h"
+@@ -17,6 +18,8 @@
+ 
+ namespace sherpa_onnx {
+ 
++struct GrammarDag;  // sherpa-onnx/csrc/grammar-builder.h
++
+ class OfflineRecognizerImpl {
+  public:
+   explicit OfflineRecognizerImpl(const OfflineRecognizerConfig &config);
+@@ -57,6 +60,34 @@ class OfflineRecognizerImpl {
+       const std::vector<std::string> & /*words*/,
+       const std::vector<float> & /*weights*/ = {}) const {}
+ 
++  // [BranchKit command-grammar compiler — D2] Build a STRUCTURED CTC decoding
++  // graph from a pattern-DAG IN-PROCESS and swap it onto the decoder. Default
++  // no-op; overridden by the CTC impl. `union_words` is the full recognition
++  // union (lexicon basis + open-tail alphabet).
++  virtual void SetGraphFromDag(
++      const GrammarDag & /*dag*/,
++      const std::vector<std::string> & /*union_words*/) const {}
++
++  // [BranchKit async grammar swap] The two halves of SetGraphFrom*. A Build*
++  // composes a graph and touches no decoding state, so it may run on another
++  // thread while this recognizer decodes (builds are serialized among
++  // themselves). InstallGraph swaps a built graph onto the decoder: run it on
++  // the decoding thread, between decodes. Defaults: no graph / no-op.
++  virtual std::unique_ptr<fst::Fst<fst::StdArc>> BuildGraphFromWords(
++      const std::vector<std::string> & /*words*/,
++      const std::vector<float> & /*weights*/) const {
++    return nullptr;
++  }
++
++  virtual std::unique_ptr<fst::Fst<fst::StdArc>> BuildGraphFromDag(
++      const GrammarDag & /*dag*/,
++      const std::vector<std::string> & /*union_words*/) const {
++    return nullptr;
++  }
++
++  virtual void InstallGraph(
++      std::unique_ptr<fst::Fst<fst::StdArc>> /*graph*/) const {}
++
+   std::string ApplyInverseTextNormalization(std::string text) const;
+ 
+   std::string ApplyHomophoneReplacer(std::string text) const;
+diff --git a/sherpa-onnx/csrc/offline-recognizer.cc b/sherpa-onnx/csrc/offline-recognizer.cc
+index bc5807b..8e4662d 100644
+--- a/sherpa-onnx/csrc/offline-recognizer.cc
++++ b/sherpa-onnx/csrc/offline-recognizer.cc
+@@ -189,6 +189,27 @@ void OfflineRecognizer::SetGraphFromWords(
+   impl_->SetGraphFromWords(words, weights);
+ }
+ 
++void OfflineRecognizer::SetGraphFromDag(
++    const GrammarDag &dag, const std::vector<std::string> &union_words) const {
++  impl_->SetGraphFromDag(dag, union_words);
++}
++
++std::unique_ptr<fst::Fst<fst::StdArc>> OfflineRecognizer::BuildGraphFromWords(
++    const std::vector<std::string> &words,
++    const std::vector<float> &weights) const {
++  return impl_->BuildGraphFromWords(words, weights);
++}
++
++std::unique_ptr<fst::Fst<fst::StdArc>> OfflineRecognizer::BuildGraphFromDag(
++    const GrammarDag &dag, const std::vector<std::string> &union_words) const {
++  return impl_->BuildGraphFromDag(dag, union_words);
++}
++
++void OfflineRecognizer::InstallGraph(
++    std::unique_ptr<fst::Fst<fst::StdArc>> graph) const {
++  impl_->InstallGraph(std::move(graph));
++}
++
+ #if __ANDROID_API__ >= 9
+ template OfflineRecognizer::OfflineRecognizer(
+     AAssetManager *mgr, const OfflineRecognizerConfig &config);
+diff --git a/sherpa-onnx/csrc/offline-recognizer.h b/sherpa-onnx/csrc/offline-recognizer.h
+index 580b89e..0d612fa 100644
+--- a/sherpa-onnx/csrc/offline-recognizer.h
++++ b/sherpa-onnx/csrc/offline-recognizer.h
+@@ -9,6 +9,7 @@
+ #include <string>
+ #include <vector>
+ 
++#include "fst/fst.h"
+ #include "sherpa-onnx/csrc/features.h"
+ #include "sherpa-onnx/csrc/homophone-replacer.h"
+ #include "sherpa-onnx/csrc/offline-ctc-fst-decoder-config.h"
+@@ -21,6 +22,7 @@
+ namespace sherpa_onnx {
+ 
+ struct OfflineRecognitionResult;
++struct GrammarDag;  // sherpa-onnx/csrc/grammar-builder.h
+ 
+ struct OfflineRecognizerConfig {
+   FeatureExtractorConfig feat_config;
+@@ -133,6 +135,24 @@ class OfflineRecognizer {
+   void SetGraphFromWords(const std::vector<std::string> &words,
+                          const std::vector<float> &weights = {}) const;
+ 
++  // [BranchKit command-grammar compiler — D2] Build a STRUCTURED CTC decoding
++  // graph from a pattern-DAG IN-PROCESS and swap it in. Only affects a
++  // recognizer using the CTC FST decoder; a no-op otherwise. `union_words` is
++  // the full recognition union (lexicon basis + open-tail alphabet).
++  void SetGraphFromDag(const GrammarDag &dag,
++                       const std::vector<std::string> &union_words) const;
++
++  // [BranchKit async grammar swap] SetGraphFrom* split in two: Build* may run
++  // on another thread while this recognizer decodes; InstallGraph runs on the
++  // decoding thread between decodes. A null graph (non-CTC-FST recognizer)
++  // installs as a no-op.
++  std::unique_ptr<fst::Fst<fst::StdArc>> BuildGraphFromWords(
++      const std::vector<std::string> &words,
++      const std::vector<float> &weights = {}) const;
++  std::unique_ptr<fst::Fst<fst::StdArc>> BuildGraphFromDag(
++      const GrammarDag &dag, const std::vector<std::string> &union_words) const;
++  void InstallGraph(std::unique_ptr<fst::Fst<fst::StdArc>> graph) const;
++
+  private:
+   std::unique_ptr<OfflineRecognizerImpl> impl_;
+ };
+diff --git a/sherpa-onnx/csrc/session.cc b/sherpa-onnx/csrc/session.cc
+index 8206bb9..7b64b26 100755
+--- a/sherpa-onnx/csrc/session.cc
++++ b/sherpa-onnx/csrc/session.cc
+@@ -12,6 +12,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "sherpa-onnx/csrc/interactive-threads.h"
+ #include "sherpa-onnx/csrc/macros.h"
+ #include "sherpa-onnx/csrc/provider.h"
+ #include "sherpa-onnx/csrc/text-utils.h"
+@@ -151,6 +152,8 @@ Ort::SessionOptions GetSessionOptionsImpl(
+ #else
+   sess_opts.SetInterOpNumThreads(num_threads);
+ #endif
++  // [BranchKit] Interactive-priority workers when the process asked for them.
++  ApplyInteractiveThreads(&sess_opts);
+ 
+   std::vector<std::string> available_providers = Ort::GetAvailableProviders();
+   std::ostringstream os;

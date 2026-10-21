@@ -1,0 +1,1228 @@
+diff --git a/sherpa-onnx/c-api/c-api.cc b/sherpa-onnx/c-api/c-api.cc
+index cc808c1..db10693 100644
+--- a/sherpa-onnx/c-api/c-api.cc
++++ b/sherpa-onnx/c-api/c-api.cc
+@@ -22,6 +22,7 @@
+ #include "sherpa-onnx/csrc/circular-buffer.h"
+ #include "sherpa-onnx/csrc/display.h"
+ #include "sherpa-onnx/csrc/file-utils.h"
++#include "sherpa-onnx/csrc/grammar-builder.h"
+ #include "sherpa-onnx/csrc/keyword-spotter.h"
+ #include "sherpa-onnx/csrc/macros.h"
+ #include "sherpa-onnx/csrc/offline-punctuation.h"
+@@ -688,6 +689,51 @@ const SherpaOnnxOfflineRecognizer *SherpaOnnxCreateOfflineRecognizer(
+   return recognizer;
+ }
+ 
++const SherpaOnnxOfflineRecognizer *SherpaOnnxCreateOfflineRecognizerWithFstGraph(
++    const SherpaOnnxOfflineRecognizerConfig *config, const char *graph,
++    int32_t max_active) {
++  sherpa_onnx::OfflineRecognizerConfig recognizer_config =
++      GetOfflineRecognizerConfig(config);
++
++  // The only field the upstream C-API does not expose: pointing the offline CTC
++  // recognizer at an HL/HLG graph selects the closed-grammar FST decoder
++  // (offline-recognizer-ctc-impl.h: non-empty graph -> OfflineCtcFstDecoder).
++  recognizer_config.ctc_fst_decoder_config.graph = SHERPA_ONNX_OR(graph, "");
++  recognizer_config.ctc_fst_decoder_config.max_active =
++      max_active > 0 ? max_active : 3000;
++
++  if (!recognizer_config.Validate()) {
++    SHERPA_ONNX_LOGE("Errors in config");
++    return nullptr;
++  }
++
++  SherpaOnnxOfflineRecognizer *recognizer = new SherpaOnnxOfflineRecognizer;
++
++  recognizer->impl =
++      std::make_unique<sherpa_onnx::OfflineRecognizer>(recognizer_config);
++
++  return recognizer;
++}
++
++void SherpaOnnxOfflineRecognizerSetGraphFromWords(
++    const SherpaOnnxOfflineRecognizer *recognizer, const char *const *words,
++    int32_t num_words, const float *weights) {
++  if (!recognizer || !words || num_words <= 0) return;
++  std::vector<std::string> w;
++  std::vector<float> wt;
++  w.reserve(num_words);
++  if (weights) wt.reserve(num_words);
++  for (int32_t i = 0; i < num_words; ++i) {
++    if (words[i]) {
++      w.emplace_back(words[i]);
++      // Keep weights parallel to the words we actually push (a null word slot
++      // would otherwise desync the two arrays).
++      if (weights) wt.push_back(weights[i]);
++    }
++  }
++  recognizer->impl->SetGraphFromWords(w, wt);
++}
++
+ void SherpaOnnxOfflineRecognizerSetConfig(
+     const SherpaOnnxOfflineRecognizer *recognizer,
+     const SherpaOnnxOfflineRecognizerConfig *config) {
+diff --git a/sherpa-onnx/c-api/c-api.h b/sherpa-onnx/c-api/c-api.h
+index 8ec1646..b35d662 100644
+--- a/sherpa-onnx/c-api/c-api.h
++++ b/sherpa-onnx/c-api/c-api.h
+@@ -1247,6 +1247,28 @@ SHERPA_ONNX_API const SherpaOnnxOfflineRecognizer *
+ SherpaOnnxCreateOfflineRecognizer(
+     const SherpaOnnxOfflineRecognizerConfig *config);
+ 
++// [BranchKit offline command path] Create an offline recognizer pinned to a
++// closed CTC decoding graph (an HL/HLG .fst path). The upstream C-API struct
++// has no `ctc_fst_decoder_config` field (only the online one does), so this is
++// the additive entry point that selects the offline FST decoder. `graph` is the
++// HL.fst path; `max_active` <= 0 falls back to 3000.
++SHERPA_ONNX_API const SherpaOnnxOfflineRecognizer *
++SherpaOnnxCreateOfflineRecognizerWithFstGraph(
++    const SherpaOnnxOfflineRecognizerConfig *config, const char *graph,
++    int32_t max_active);
++
++// [BranchKit offline command path] Build a CTC decoding graph from a word list
++// IN-PROCESS (no .fst file) and swap it onto an offline recognizer created with
++// SherpaOnnxCreateOfflineRecognizerWithFstGraph (Direction 2 on offline). No
++// stream arg — offline decodes per-call, so the swap is on the recognizer.
++// `words` is an array of `num_words` NUL-terminated UTF-8 strings. `weights`,
++// when non-NULL, is a parallel array of `num_words` per-word decoding biases
++// (weighted-WFST shallow fusion): 0 = neutral, positive penalizes,
++// negative boosts. Pass NULL for an unweighted grammar.
++SHERPA_ONNX_API void SherpaOnnxOfflineRecognizerSetGraphFromWords(
++    const SherpaOnnxOfflineRecognizer *recognizer, const char *const *words,
++    int32_t num_words, const float *weights);
++
+ /**
+  * @brief Update the configuration of an existing offline recognizer.
+  *
+diff --git a/sherpa-onnx/csrc/CMakeLists.txt b/sherpa-onnx/csrc/CMakeLists.txt
+index 475f46e..fd7f243 100755
+--- a/sherpa-onnx/csrc/CMakeLists.txt
++++ b/sherpa-onnx/csrc/CMakeLists.txt
+@@ -20,6 +20,7 @@ set(sources
+   features.cc
+   file-utils.cc
+   fst-utils.cc
++  grammar-builder.cc
+   homophone-replacer.cc
+   hypothesis.cc
+   keyword-spotter-impl.cc
+diff --git a/sherpa-onnx/csrc/grammar-builder.cc b/sherpa-onnx/csrc/grammar-builder.cc
+new file mode 100644
+index 0000000..d966d0d
+--- /dev/null
++++ b/sherpa-onnx/csrc/grammar-builder.cc
+@@ -0,0 +1,567 @@
++// sherpa-onnx/csrc/grammar-builder.cc
++//
++// [BranchKit Direction 2] In-process HL grammar builder. See header.
++
++#include "sherpa-onnx/csrc/grammar-builder.h"
++
++#include <algorithm>
++#include <cctype>
++#include <chrono>  // NOLINT
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++#include <fstream>
++#include <sstream>
++#include <unordered_map>
++#include <utility>
++
++#include "kaldifst/csrc/determinize-star.h"
++#include "sherpa-onnx/csrc/macros.h"
++#include "ssentencepiece/csrc/ssentencepiece.h"
++
++namespace sherpa_onnx {
++
++using fst::StdArc;
++using StdVectorFst = fst::VectorFst<StdArc>;
++
++namespace {
++
++using Clock = std::chrono::steady_clock;
++double MsSince(const Clock::time_point &t0) {
++  return std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
++}
++
++bool IsDisambig(const std::string &tok) {
++  if (tok.size() < 2 || tok[0] != '#') return false;
++  for (size_t i = 1; i < tok.size(); ++i) {
++    if (!std::isdigit(static_cast<unsigned char>(tok[i]))) return false;
++  }
++  return true;
++}
++
++// build_standard_ctc_topo: a fully-connected CTC topology. State i has, for every
++// token k, an arc (ilabel=k, olabel=0 on self-loops + arcs entering blank, else k;
++// blank_id = the model's real blank, zipformer 0 / NeMo 1024). Vocab-independent.
++std::unique_ptr<StdVectorFst> BuildStandardCtcTopo(int32_t max_token_id, int32_t blank_id) {
++  int32_t num_states = max_token_id + 1;
++  auto f = std::make_unique<StdVectorFst>();
++  for (int32_t i = 0; i < num_states; ++i) {
++    int32_t s = f->AddState();
++    f->SetFinal(s, StdArc::Weight::One());
++  }
++  f->SetStart(blank_id);
++  for (int32_t i = 0; i < num_states; ++i) {
++    for (int32_t k = 0; k < num_states; ++k) {
++      int32_t olabel = (i == k || k == blank_id) ? 0 : k;
++      f->AddArc(i, StdArc(k, olabel, StdArc::Weight::One(), k));
++    }
++  }
++  return f;
++}
++
++// add_one: shift labels by +1 (OpenFST reserves ilabel 0 = epsilon, but the CTC
++// topo's token id 0 = blank is a real symbol). For H: shift every ilabel and
++// every non-zero olabel. For L: shift every ilabel only.
++void AddOne(StdVectorFst *f, bool update_olabel) {
++  for (fst::StateIterator<StdVectorFst> sit(*f); !sit.Done(); sit.Next()) {
++    int32_t state = sit.Value();
++    for (fst::MutableArcIterator<StdVectorFst> ait(f, state); !ait.Done();
++         ait.Next()) {
++      StdArc arc = ait.Value();
++      arc.ilabel += 1;
++      if (update_olabel && arc.olabel != 0) arc.olabel += 1;
++      ait.SetValue(arc);
++    }
++  }
++}
++
++// add_disambig_self_loops: for every state, add a self-loop for each disambig
++// symbol id in [start, end].
++void AddDisambigSelfLoops(StdVectorFst *f, int32_t start, int32_t end) {
++  for (fst::StateIterator<StdVectorFst> sit(*f); !sit.Done(); sit.Next()) {
++    int32_t state = sit.Value();
++    for (int32_t i = start; i <= end; ++i) {
++      f->AddArc(state, StdArc(i, i, StdArc::Weight::One(), state));
++    }
++  }
++}
++
++// make_lexicon_fst_no_silence: a single looping state; each word is a path of
++// arcs from the loop state back to it, emitting the word id on the first arc.
++std::unique_ptr<StdVectorFst> MakeLexiconFstNoSilence(
++    const std::vector<std::pair<std::string, std::vector<std::string>>> &lexicon,
++    const std::unordered_map<std::string, int32_t> &token2id,
++    const std::unordered_map<std::string, int32_t> &word2id) {
++  auto f = std::make_unique<StdVectorFst>();
++  int32_t start = f->AddState();
++  f->SetStart(start);
++  f->SetFinal(start, StdArc::Weight::One());
++
++  for (const auto &entry : lexicon) {
++    const std::string &word = entry.first;
++    const std::vector<std::string> &phoneseq = entry.second;
++    int32_t wid = word2id.at(word);
++    int32_t cur = start;
++    int32_t n = static_cast<int32_t>(phoneseq.size());
++
++    for (int32_t i = 0; i < n - 1; ++i) {
++      int32_t next = f->AddState();
++      int32_t olabel = (i == 0) ? wid : 0;
++      f->AddArc(cur, StdArc(token2id.at(phoneseq[i]), olabel,
++                            StdArc::Weight::One(), next));
++      cur = next;
++    }
++
++    int32_t i = n - 1;  // -1 if phoneseq empty
++    int32_t ilabel = (i >= 0) ? token2id.at(phoneseq[i]) : 0;
++    int32_t olabel = (i <= 0) ? wid : 0;
++    f->AddArc(cur, StdArc(ilabel, olabel, StdArc::Weight::One(), start));
++  }
++  return f;
++}
++
++// add_lex_disambig.pl port: append #N disambig symbols to homophone /
++// prefix-colliding pronunciations so the lexicon FST is determinizable.
++// Returns the disambiguated lexicon and the max disambig index used.
++std::pair<std::vector<std::pair<std::string, std::vector<std::string>>>, int32_t>
++AddDisambigSymbols(
++    const std::vector<std::pair<std::string, std::vector<std::string>>>
++        &lexicon) {
++  auto join = [](const std::vector<std::string> &v) {
++    std::string s;
++    for (size_t i = 0; i < v.size(); ++i) {
++      if (i) s += ' ';
++      s += v[i];
++    }
++    return s;
++  };
++
++  std::unordered_map<std::string, int32_t> count;
++  for (const auto &e : lexicon) count[join(e.second)] += 1;
++
++  std::unordered_map<std::string, int32_t> issubseq;
++  for (const auto &e : lexicon) {
++    std::vector<std::string> toks = e.second;
++    if (!toks.empty()) toks.pop_back();
++    while (!toks.empty()) {
++      issubseq[join(toks)] = 1;
++      toks.pop_back();
++    }
++  }
++
++  std::vector<std::pair<std::string, std::vector<std::string>>> ans;
++  const int32_t first_allowed = 1;
++  int32_t max_disambig = first_allowed - 1;
++  std::unordered_map<std::string, int32_t> last_used;
++
++  for (const auto &e : lexicon) {
++    std::string key = join(e.second);
++    if (issubseq[key] == 0 && count[key] == 1) {
++      ans.push_back(e);
++      continue;
++    }
++    int32_t cur = last_used.count(key) ? last_used[key] : 0;
++    cur = (cur == 0) ? first_allowed : cur + 1;
++    if (cur > max_disambig) max_disambig = cur;
++    last_used[key] = cur;
++    std::vector<std::string> toks = e.second;
++    toks.push_back("#" + std::to_string(cur));
++    ans.emplace_back(e.first, std::move(toks));
++  }
++  return {ans, max_disambig};
++}
++
++}  // namespace
++
++GrammarBuilder::GrammarBuilder(const std::string &tokens_txt,
++                               const std::string &lexicon_txt,
++                               const std::string &bpe_vocab) {
++  verbose_ = std::getenv("BK_GRAMMAR_TIMING") != nullptr;
++
++  // tokens.txt -> token2id; record #0 id, max disambig id, max id.
++  {
++    std::ifstream is(tokens_txt);
++    if (!is) {
++      SHERPA_ONNX_LOGE("GrammarBuilder: cannot open tokens %s",
++                       tokens_txt.c_str());
++    }
++    std::string tok;
++    int32_t id;
++    while (is >> tok >> id) {
++      token2id_[tok] = id;
++      if (id > max_id_) max_id_ = id;
++      if (IsDisambig(tok)) {
++        if (id > model_max_disambig_id_) model_max_disambig_id_ = id;
++      }
++    }
++  }
++
++  // lexicon.txt -> word -> tokens (first pronunciation wins).
++  if (!lexicon_txt.empty()) {
++    std::ifstream is(lexicon_txt);
++    std::string line;
++    while (std::getline(is, line)) {
++      std::istringstream iss(line);
++      std::string word, t;
++      if (!(iss >> word)) continue;
++      if (model_lexicon_.count(word)) continue;
++      std::vector<std::string> toks;
++      while (iss >> t) toks.push_back(t);
++      if (!toks.empty()) model_lexicon_[word] = std::move(toks);
++    }
++  }
++
++  if (!bpe_vocab.empty()) {
++    std::ifstream test(bpe_vocab);
++    if (test) {
++      bpe_ = std::make_unique<ssentencepiece::Ssentencepiece>(bpe_vocab);
++    }
++  }
++
++  // Build + cache the vocab-independent CTC topo. max_token_id excludes
++  // disambig symbols and 0 -> it's the max real BPE token id.
++  int32_t max_token_id = 0;
++  for (const auto &kv : token2id_) {
++    if (kv.second != 0 && !IsDisambig(kv.first) && kv.second > max_token_id) {
++      max_token_id = kv.second;
++    }
++  }
++
++  auto t0 = Clock::now();
++  base_H_ = BuildStandardCtcTopo(max_token_id, token2id_.count("<blk>") ? token2id_.at("<blk>") : 0);
++  AddOne(base_H_.get(), /*update_olabel=*/true);
++  if (verbose_) {
++    fprintf(stderr,
++            "[grammar-builder] H ctc topo (cached, vocab-independent): "
++            "max_token_id=%d, %d states, built in %.1f ms\n",
++            max_token_id, base_H_->NumStates(), MsSince(t0));
++  }
++}
++
++GrammarBuilder::~GrammarBuilder() = default;
++
++std::vector<std::string> GrammarBuilder::WordToTokens(
++    const std::string &word) const {
++  auto it = model_lexicon_.find(word);
++  if (it != model_lexicon_.end()) return it->second;
++  std::vector<std::string> toks;
++  if (bpe_) bpe_->Encode(word, &toks);
++  return toks;
++}
++
++std::unique_ptr<StdVectorFst> GrammarBuilder::BuildHL(
++    const std::vector<std::string> &words,
++    std::unordered_map<std::string, int32_t> *word2id_out) const {
++  auto t_all = Clock::now();
++  double t_lex = 0, t_disambig = 0, t_Lfst = 0, t_Hprep = 0, t_compose = 0,
++         t_det = 0, t_strip = 0;
++  int32_t n_via_bpe = 0;
++
++  // 1) word -> BPE tokens. Dedup words preserving order (words.txt has each
++  //    word once and word ids must be stable).
++  auto t = Clock::now();
++  std::vector<std::string> vocab;
++  std::unordered_map<std::string, int32_t> word2id;
++  std::vector<std::pair<std::string, std::vector<std::string>>> lexicon;
++  for (const auto &w : words) {
++    if (word2id.count(w)) continue;
++    auto toks = WordToTokens(w);
++    if (toks.empty()) {
++      SHERPA_ONNX_LOGE("GrammarBuilder: no tokens for word '%s' (skipped)",
++                       w.c_str());
++      continue;
++    }
++    if (!model_lexicon_.count(w)) ++n_via_bpe;
++    word2id[w] = static_cast<int32_t>(vocab.size()) + 1;  // 1..N
++    vocab.push_back(w);
++    lexicon.emplace_back(w, std::move(toks));
++  }
++  t_lex = MsSince(t);
++
++  // 2) disambig symbols.
++  t = Clock::now();
++  auto disambig_result = AddDisambigSymbols(lexicon);
++  auto &disambig_lex = disambig_result.first;
++  int32_t max_disambig = disambig_result.second;
++
++  // token2id including any disambig symbols our vocab needs beyond the model's.
++  std::unordered_map<std::string, int32_t> token2id = token2id_;
++  int32_t max_disambig_id = model_max_disambig_id_;
++  int32_t next_id = max_id_ + 1;
++  for (int32_t d = 0; d <= max_disambig; ++d) {
++    std::string sym = "#" + std::to_string(d);
++    if (!token2id.count(sym)) {
++      token2id[sym] = next_id++;
++    }
++    if (token2id[sym] > max_disambig_id) max_disambig_id = token2id[sym];
++  }
++  t_disambig = MsSince(t);
++
++  // 3) L looping lexicon (+1 shift, olabel unchanged).
++  t = Clock::now();
++  auto L = MakeLexiconFstNoSilence(disambig_lex, token2id, word2id);
++  AddOne(L.get(), /*update_olabel=*/false);
++  t_Lfst = MsSince(t);
++
++  // 4) H prep: derive from base_H_ — copy, add disambig self-loops, olabel
++  //    arcsort. Rebuilt per call, uncached: BuildHL runs only when the
++  //    accumulated lexicon grows (EnsureLazyHL), never per swap, so there is
++  //    no repeated preparation to amortize (the eager path's only-grow
++  //    prepared-H cache — swap-cost C2 — is retired by construction). The
++  //    shift is +1 (H had add_one). disambig0 = the LOCAL #0 id (NeMo ships
++  //    no model #0).
++  t = Clock::now();
++  int32_t shift_d0 = token2id.at("#0") + 1;
++  int32_t shift_dmax = max_disambig_id + 1;
++  auto prepared_H = std::make_unique<StdVectorFst>(*base_H_);
++  AddDisambigSelfLoops(prepared_H.get(), shift_d0, shift_dmax);
++  fst::ArcSort(prepared_H.get(), fst::OLabelCompare<StdArc>());
++  fst::ArcSort(L.get(), fst::ILabelCompare<StdArc>());
++  t_Hprep = MsSince(t);
++
++  // 5) compose H o L.
++  t = Clock::now();
++  auto HL = std::make_unique<StdVectorFst>();
++  fst::Compose(*prepared_H, *L, HL.get());
++  t_compose = MsSince(t);
++
++  // 6) determinize_star (epsilon-removing determinization).
++  t = Clock::now();
++  auto HL_det = std::make_unique<StdVectorFst>();
++  fst::DeterminizeStar(*HL, HL_det.get());
++  t_det = MsSince(t);
++
++  // 7) strip disambig: shifted disambig ilabels -> epsilon (0).
++  t = Clock::now();
++  for (fst::StateIterator<StdVectorFst> sit(*HL_det); !sit.Done(); sit.Next()) {
++    int32_t state = sit.Value();
++    for (fst::MutableArcIterator<StdVectorFst> ait(HL_det.get(), state);
++         !ait.Done(); ait.Next()) {
++      StdArc arc = ait.Value();
++      if (arc.ilabel >= shift_d0 && arc.ilabel <= shift_dmax) {
++        arc.ilabel = 0;
++        ait.SetValue(arc);
++      }
++    }
++  }
++  t_strip = MsSince(t);
++
++  if (word2id_out) *word2id_out = word2id;
++
++  if (verbose_) {
++    fprintf(stderr,
++            "[grammar-builder] BuildHL(%zu words, %d via bpe): HL %d states, "
++            "%.1f ms total\n"
++            "    %6.2f ms  word->bpe lexicon\n"
++            "    %6.2f ms  disambig symbols\n"
++            "    %6.2f ms  L looping fst\n"
++            "    %6.2f ms  H copy + disambig loops + arcsort\n"
++            "    %6.2f ms  compose H o L\n"
++            "    %6.2f ms  determinize_star\n"
++            "    %6.2f ms  strip disambig\n",
++            vocab.size(), n_via_bpe, HL_det->NumStates(), MsSince(t_all), t_lex,
++            t_disambig, t_Lfst, t_Hprep, t_compose, t_det, t_strip);
++  }
++
++  return HL_det;
++}
++
++// ---------------------------------------------------------------------------
++// [BranchKit lazy composition — the DEFAULT grammar path]
++// HL compiled once per lexicon, G built
++// from the swap payload in microseconds, fst::ComposeFst joins them on demand
++// during decoding. This is the ONLY grammar path — the recognizer impl
++// (offline-recognizer-ctc-impl.h) routes every swap here.
++// ---------------------------------------------------------------------------
++
++namespace {
++
++// Cache budget for each delayed ComposeFst's expanded-state cache. Expanded
++// states accumulate across decodes within one grammar epoch (the cache lives
++// as long as the graph, i.e. until the next swap replaces the decoder); the
++// GC bound caps growth on long single-grammar sessions.
++constexpr size_t kLazyComposeCacheLimit = 64 << 20;
++
++// A narrow request's lazy graph is materialized and fst::Connect'd instead
++// of left delayed. The delayed composition of a wide HL with a NARROW G
++// keeps non-coaccessible dead ends — token prefixes of superset-lexicon
++// words that can never emit a G-admitted olabel. Those dead ends transiently
++// occupy the decoding beam and can prune the blank hypothesis, turning an
++// off-grammar utterance's intended empty decode into a forced in-mode word
++// (measured: "air air" under a snap narrow decoded ESCAPE lazily vs ""
++// eagerly; shield still held — only in-mode words are producible — but the
++// empty-decode-on-off-grammar property broke). Connect removes exactly those
++// states, restoring eager-equivalent search. The rule is subset-driven, NOT
++// count-capped: the trim is a correctness property and must hold for every
++// modal narrow regardless of size — slot-driven modes (open_app, key_mode)
++// can exceed any fixed cap. Only the full-union request — where delaying
++// pays and G admits the whole lexicon, so dead ends are marginal — stays
++// delayed.
++//
++// How the trim is computed (GrammarBuilder::ComposeTrimmed). Expanding the
++// plain composition first and then calling Connect explores every dead-end
++// prefix before discarding it: at a ~1.9k-word structured grammar that was
++// 13.2M states and 44.5M arcs expanded (9.3 s) and Connect (2.1 s) kept
++// 86,625, measured 2026-10-20. Composing through TrimLookAheadFst instead,
++// the lookahead filter refuses an HL arc whose reachable output labels match
++// no arc at G's current state, so a dead-end prefix is never entered: the
++// same composition expanded to 86,625 states in ~0.15 s and the final
++// Connect removed none. Nothing is pushed (see TrimLookAheadFst), so the
++// graph searched is the same one; decodes of 69 clips under the full grammar
++// and 966 across the 14 live mode grammars were identical in text, tokens,
++// timestamps and margins.
++
++}  // namespace
++
++std::unique_ptr<StdVectorFst> GrammarBuilder::ComposeTrimmed(
++    std::unique_ptr<StdVectorFst> G) const {
++  auto t0 = Clock::now();
++  // Lookahead sees one word ahead, never where a word arc leads, so a G state
++  // with no way to accept (an arc dropped for a word with no tokens) is
++  // removed here rather than left to strand a word in the beam.
++  fst::Connect(G.get());
++  const bool lookahead =
++      lazy_la_HL_ &&
++      fst::LookAheadMatchType<StdArc>(
++          static_cast<const fst::Fst<StdArc> &>(*lazy_la_HL_),
++          static_cast<const fst::Fst<StdArc> &>(*G)) == fst::MATCH_OUTPUT;
++  std::unique_ptr<StdVectorFst> out;
++  if (lookahead) {
++    // G's input labels move into the lookahead HL's relabeled output space;
++    // its output labels stay the word ids the decoder reads.
++    fst::LabelLookAheadRelabeler<StdArc>::Relabel(G.get(), *lazy_la_HL_, true);
++    fst::ArcSort(G.get(), fst::ILabelCompare<StdArc>());
++    out = std::make_unique<StdVectorFst>(fst::ComposeFst<StdArc>(
++        *lazy_la_HL_, *G, fst::CacheOptions(true, kLazyComposeCacheLimit)));
++  } else {
++    // Without lookahead the composition would be plain and keep every dead
++    // end; expand it all, as before lookahead, so the result is the same.
++    fprintf(stderr,
++            "[grammar-builder] WARNING: lookahead unavailable, trimming by "
++            "full expansion (slow)\n");
++    fst::ArcSort(G.get(), fst::ILabelCompare<StdArc>());
++    out = std::make_unique<StdVectorFst>(fst::ComposeFst<StdArc>(
++        *lazy_HL_, *G, fst::CacheOptions(true, kLazyComposeCacheLimit)));
++  }
++  const int32_t expanded = out->NumStates();
++  fst::Connect(out.get());
++  if (verbose_) {
++    fprintf(stderr,
++            "[grammar-builder] trim (%s): %d states expanded, Connect removed "
++            "%d, %.1f ms\n",
++            lookahead ? "lookahead" : "full expansion", expanded,
++            expanded - out->NumStates(), MsSince(t0));
++  }
++  return out;
++}
++
++bool GrammarBuilder::EnsureLazyHL(const std::vector<std::string> &words) const {
++  size_t before = lazy_vocab_.size();
++  for (const auto &w : words) {
++    if (lazy_seen_.emplace(w, 1).second) lazy_vocab_.push_back(w);
++  }
++  if (lazy_HL_ && lazy_vocab_.size() == before) return false;  // pure hit
++
++  // Miss or grow: re-derive HL over the whole accumulated lexicon. A word with
++  // no BPE tokens stays in lazy_vocab_ but is skipped (and logged) by BuildHL
++  // on every rebuild, so it consistently never gets an output-label id.
++  auto t0 = Clock::now();
++  lazy_word2id_.clear();
++  auto hl = BuildHL(lazy_vocab_, &lazy_word2id_);
++  // olabel-sorted ONCE here so every subsequent lazy compose can match against
++  // an ilabel-sorted G without per-swap sorting of the big side.
++  fst::ArcSort(hl.get(), fst::OLabelCompare<StdArc>());
++  lazy_HL_ = std::move(hl);
++  lazy_la_HL_ = std::make_shared<TrimLookAheadFst>(*lazy_HL_);
++  if (verbose_) {
++    fprintf(stderr,
++            "[grammar-builder] lazy HL rebuilt: %zu lexicon words (+%zu new), "
++            "%d states, %.1f ms\n",
++            lazy_vocab_.size(), lazy_vocab_.size() - before,
++            lazy_HL_->NumStates(), MsSince(t0));
++  }
++  return true;
++}
++
++std::unique_ptr<fst::Fst<StdArc>> GrammarBuilder::ComposeLazy(
++    std::unique_ptr<StdVectorFst> G, size_t resolved_words, bool always_trim,
++    bool *narrow_out) const {
++  // Narrow = the request resolves to a PROPER subset of the accumulated
++  // lexicon -> the trimmed composition (the dead-end trim; see the comment on
++  // ComposeTrimmed). resolved_words must count DISTINCT words that made
++  // it into lazy_word2id_ -- never raw request counts, which no-BPE words
++  // inflate (a miscount here skips the trim and reopens the
++  // empty-decode-on-off-grammar hole). Note the comparison is against the
++  // only-grow ACCUMULATED lexicon by design: if the platform's union itself
++  // shrinks (plugin disabled, command set rebuilt smaller), later full-union
++  // requests ARE proper subsets and correctly materialize -- the retired
++  // words' dead-end prefixes are exactly the beam hazard the trim removes.
++  // That costs a trimmed composition per swap (about 0.15 s at ~1.9k words,
++  // see ComposeTrimmed) instead of sub-ms until the process restarts;
++  // correctness over the cost claim.
++  //
++  // `always_trim` is for a G that does not admit every lexicon word at every
++  // state (a structured grammar): its composition has dead ends whatever the
++  // lexicon holds, so the subset test would make the search depend on which
++  // words earlier swaps happened to add -- two recognizers with the same
++  // request decoding the same audio differently.
++  const bool narrow = always_trim || resolved_words < lazy_word2id_.size();
++  if (narrow_out) *narrow_out = narrow;
++  if (narrow) return ComposeTrimmed(std::move(G));
++  fst::ArcSort(G.get(), fst::ILabelCompare<StdArc>());
++  return std::make_unique<fst::ComposeFst<StdArc>>(
++      *lazy_HL_, *G, fst::CacheOptions(true, kLazyComposeCacheLimit));
++}
++
++std::unique_ptr<fst::Fst<StdArc>> GrammarBuilder::BuildLazy(
++    const std::vector<std::string> &words,
++    const std::vector<float> &weights) const {
++  auto t_all = Clock::now();
++  bool hl_rebuilt = EnsureLazyHL(words);
++
++  // per-word bias: per-word, first-seen id, last non-zero weight wins, 0 =
++  // neutral. The bias rides the word's single G arc — composition ADDS
++  // weights (tropical), and a path emits the olabel exactly once per word
++  // occurrence, so the total path cost equals stamping every HL arc carrying
++  // the word's olabel (what the retired eager path did).
++  std::unordered_map<int32_t, float> bias_by_id;
++  size_t n = std::min(words.size(), weights.size());
++  for (size_t i = 0; i < n; ++i) {
++    if (weights[i] == 0.0f) continue;
++    auto it = lazy_word2id_.find(words[i]);
++    if (it != lazy_word2id_.end()) bias_by_id[it->second] = weights[i];
++  }
++
++  // G: a single-state unigram loop over the REQUESTED words only (not the
++  // accumulated lexicon) — the narrow lives entirely in G. Epsilon-free by
++  // construction, which is what keeps the default compose filter correct: only
++  // HL's output side carries epsilons.
++  auto G = std::make_unique<StdVectorFst>();
++  int32_t s = G->AddState();
++  G->SetStart(s);
++  G->SetFinal(s, StdArc::Weight::One());
++  std::unordered_map<int32_t, int32_t> added;
++  for (const auto &w : words) {
++    auto it = lazy_word2id_.find(w);
++    if (it == lazy_word2id_.end()) continue;  // no BPE tokens -> not in HL
++    int32_t wid = it->second;
++    if (!added.emplace(wid, 1).second) continue;
++    auto bit = bias_by_id.find(wid);
++    float wcost = (bit != bias_by_id.end()) ? bit->second : 0.0f;
++    G->AddArc(s, StdArc(wid, wid, StdArc::Weight(wcost), s));
++  }
++  bool narrow = false;
++  auto graph = ComposeLazy(std::move(G), added.size(), false, &narrow);
++
++  if (verbose_) {
++    fprintf(stderr,
++            "[grammar-builder] BuildLazy(%zu words): HL %s, G 1st/%zuarc, "
++            "%s, %.2f ms total\n",
++            words.size(), hl_rebuilt ? "REBUILT" : "cached", added.size(),
++            narrow ? "trimmed (narrow)" : "lazy compose",
++            MsSince(t_all));
++  }
++  return graph;
++}
++
++}  // namespace sherpa_onnx
+diff --git a/sherpa-onnx/csrc/grammar-builder.h b/sherpa-onnx/csrc/grammar-builder.h
+new file mode 100644
+index 0000000..3dda200
+--- /dev/null
++++ b/sherpa-onnx/csrc/grammar-builder.h
+@@ -0,0 +1,134 @@
++// sherpa-onnx/csrc/grammar-builder.h
++//
++// [BranchKit Direction 2] In-process HL grammar builder.
++//
++// Ports the offline icefall prepare_lang_fst flow (BranchKit's build_lang.py)
++// to C++ so the CTC decoding graph can be rebuilt from a word list at runtime
++// (runtime grammar-swap equivalent). Lazy composition throughout
++// ONE HL is derived per accumulated
++// lexicon (BuildHL via EnsureLazyHL, ~0.1 s at ~1.9k words, only when a
++// genuinely new word arrives); every swap builds only a tiny word-level G and joins it with
++// fst::ComposeFst on demand during decoding, so mode entry/exit and
++// weight/DAG changes cost microseconds-to-few-ms regardless of union size.
++
++#ifndef SHERPA_ONNX_CSRC_GRAMMAR_BUILDER_H_
++#define SHERPA_ONNX_CSRC_GRAMMAR_BUILDER_H_
++
++#include <cstdint>
++#include <memory>
++#include <string>
++#include <unordered_map>
++#include <vector>
++
++#include "fst/fstlib.h"
++
++namespace ssentencepiece {
++class Ssentencepiece;
++}
++
++namespace sherpa_onnx {
++
++// The cached HL in label-lookahead form, for ComposeTrimmed: one word of
++// output lookahead (epsilon and non-epsilon arcs), and nothing pushed. The
++// stock fst::StdOLabelLookAheadFst also pushes weights and labels, which
++// changes partial path costs and so the decoder's beam pruning; this keeps
++// the composition's arcs exactly HL∘G's.
++inline constexpr char kTrimLookAheadFstType[] = "branchkit_trim_lookahead";
++using TrimLookAheadFst = fst::MatcherFst<
++    fst::ConstFst<fst::StdArc>,
++    fst::LabelLookAheadMatcher<
++        fst::SortedMatcher<fst::ConstFst<fst::StdArc>>,
++        fst::kOutputLookAheadMatcher | fst::kLookAheadEpsilons |
++            fst::kLookAheadNonEpsilons,
++        fst::DefaultAccumulator<fst::StdArc>>,
++    kTrimLookAheadFstType, fst::LabelLookAheadRelabeler<fst::StdArc>>;
++
++class GrammarBuilder {
++ public:
++  // tokens_txt : the model's tokens.txt (token -> id, includes disambig #0..).
++  // lexicon_txt: word -> BPE token pronunciations (may be ""); preferred path.
++  // bpe_vocab  : simple-sentencepiece vocab (token<space>score per line, e.g.
++  //              bpe.vocab exported from the model's bpe.model) for words absent
++  //              from the lexicon (may be "").
++  GrammarBuilder(const std::string &tokens_txt, const std::string &lexicon_txt,
++                 const std::string &bpe_vocab);
++  ~GrammarBuilder();
++
++  // Build a word-loop grammar over `words` (flat unigram G over the cached
++  // lazy HL). `weights` (optional, parallel to `words`) sets a per-word
++  // decoding bias on the word's G arc — a weighted-WFST shallow-fusion prior
++  // (BranchKit's per-word bias). Empty = unweighted; per element 0 = neutral, positive
++  // penalizes the word, negative boosts it (bound boosts — large negatives
++  // make the word-loop run away into repetition). A request that is a proper
++  // subset of the accumulated lexicon is materialized + fst::Connect'd (the
++  // dead-end trim); the full-union request stays a delayed fst::ComposeFst.
++  // Returns the ABSTRACT fst::Fst — the decoder seam (OfflineCtcFstDecoder)
++  // takes it either way.
++  std::unique_ptr<fst::Fst<fst::StdArc>> BuildLazy(
++      const std::vector<std::string> &words,
++      const std::vector<float> &weights = {}) const;
++
++ private:
++  std::vector<std::string> WordToTokens(const std::string &word) const;
++
++  // The HL derivation (called by EnsureLazyHL on lexicon growth): word->BPE
++  // lexicon, disambig, looping L, compose H o L, determinize, strip disambig.
++  // Fills `*word2id_out` (word -> output-label id, 1..N, first-seen order) so
++  // the G builders label their arcs with the same ids HL emits.
++  std::unique_ptr<fst::VectorFst<fst::StdArc>> BuildHL(
++      const std::vector<std::string> &words,
++      std::unordered_map<std::string, int32_t> *word2id_out) const;
++
++  // Shared tail of the lazy builders: ilabel-sort G, join it with the cached
++  // HL via delayed ComposeFst, and materialize+Connect iff the request
++  // resolves to a proper subset of the accumulated lexicon (the dead-end
++  // trim) or `always_trim` is set. resolved_words = DISTINCT request words
++  // present in lazy_word2id_.
++  std::unique_ptr<fst::Fst<fst::StdArc>> ComposeLazy(
++      std::unique_ptr<fst::VectorFst<fst::StdArc>> G, size_t resolved_words,
++      bool always_trim, bool *narrow_out) const;
++
++  // The trimmed composition of the cached HL with `G`: HL∘G with every
++  // non-coaccessible state removed, as a VectorFst. Composed through
++  // lazy_la_HL_ so dead-end prefixes are never expanded (see the .cc).
++  std::unique_ptr<fst::VectorFst<fst::StdArc>> ComposeTrimmed(
++      std::unique_ptr<fst::VectorFst<fst::StdArc>> G) const;
++
++  std::unordered_map<std::string, int32_t> token2id_;
++  std::unordered_map<std::string, std::vector<std::string>> model_lexicon_;
++  std::unique_ptr<ssentencepiece::Ssentencepiece> bpe_;
++
++  int32_t model_max_disambig_id_ = -1;  // max disambig id shipped in tokens.txt
++  int32_t max_id_ = 0;                  // max id across all tokens.txt entries
++
++  // Cached vocab-independent CTC topo H (ctc topo + add_one). BuildHL derives
++  // its prepared H (disambig self-loops + arcsort) from this per call —
++  // BuildHL only runs on lexicon growth, so no prepared-H cache is needed.
++  std::unique_ptr<fst::VectorFst<fst::StdArc>> base_H_;
++
++  // Grow the accumulated lazy lexicon with `words` and (re)build the cached
++  // lazy HL if anything new arrived. Returns true on a rebuild (cache miss /
++  // grow), false on a pure hit.
++  bool EnsureLazyHL(const std::vector<std::string> &words) const;
++
++  // The persistent HL: built over
++  // `lazy_vocab_` (every word ever requested, first-seen order — only-grow, so
++  // a mode round-trip narrow<->wide never invalidates it), determinized,
++  // disambig-stripped, olabel-arcsorted for composition. `lazy_word2id_` is the
++  // matching word -> output-label map G's arcs must use. ComposeFst takes
++  // refcounted copies of its inputs, so replacing lazy_HL_ on a grow never
++  // invalidates a graph already handed to the decoder.
++  mutable std::vector<std::string> lazy_vocab_;
++  mutable std::unordered_map<std::string, int32_t> lazy_seen_;
++  mutable std::unordered_map<std::string, int32_t> lazy_word2id_;
++  mutable std::unique_ptr<fst::VectorFst<fst::StdArc>> lazy_HL_;
++  // lazy_HL_ in lookahead form, rebuilt with it (EnsureLazyHL). Read-only once
++  // built, and used only by the thread that builds grammars.
++  mutable std::shared_ptr<TrimLookAheadFst> lazy_la_HL_;
++
++  bool verbose_ = false;
++};
++
++}  // namespace sherpa_onnx
++
++#endif  // SHERPA_ONNX_CSRC_GRAMMAR_BUILDER_H_
+diff --git a/sherpa-onnx/csrc/offline-ctc-decoder.h b/sherpa-onnx/csrc/offline-ctc-decoder.h
+index c9d1b36..593a0a8 100644
+--- a/sherpa-onnx/csrc/offline-ctc-decoder.h
++++ b/sherpa-onnx/csrc/offline-ctc-decoder.h
+@@ -5,8 +5,10 @@
+ #ifndef SHERPA_ONNX_CSRC_OFFLINE_CTC_DECODER_H_
+ #define SHERPA_ONNX_CSRC_OFFLINE_CTC_DECODER_H_
+ 
++#include <memory>
+ #include <vector>
+ 
++#include "fst/fst.h"
+ #include "onnxruntime_cxx_api.h"  // NOLINT
+ 
+ namespace sherpa_onnx {
+@@ -26,6 +28,19 @@ struct OfflineCtcDecoderResult {
+   ///
+   /// tokens.size() == timestamps.size()
+   std::vector<int32_t> timestamps;
++
++  /// [BranchKit engine posteriors] ys_log_probs[i] is the acoustic log-prob the
++  /// model assigned tokens[i] at its peak frame of the best-path alignment.
++  /// Populated by the FST decoder only; empty on other paths. Parallel to
++  /// `tokens` when present.
++  std::vector<float> ys_log_probs;
++
++  /// [BranchKit engine posteriors] margins[i] = ys_log_probs[i] minus the best
++  /// OTHER symbol's log-prob on the same frame (blank included). Positive: the
++  /// token was the frame argmax (genuine support); negative: the closed grammar
++  /// coerced the path through a frame whose acoustics pointed elsewhere.
++  /// Parallel to `tokens` when present.
++  std::vector<float> margins;
+ };
+ 
+ class OfflineCtcDecoder {
+@@ -43,6 +58,12 @@ class OfflineCtcDecoder {
+    */
+   virtual std::vector<OfflineCtcDecoderResult> Decode(
+       Ort::Value log_probs, Ort::Value log_probs_length) = 0;
++
++  // [BranchKit offline command path] Swap the decoding graph (built by the
++  // in-process GrammarBuilder) at runtime. Default no-op; overridden by the FST
++  // decoder. Offline builds a fresh FasterDecoder per Decode() call, so a graph
++  // swap needs no per-stream state refresh (unlike the online soft reset).
++  virtual void SetGraph(std::unique_ptr<fst::Fst<fst::StdArc>> /*fst*/) {}
+ };
+ 
+ }  // namespace sherpa_onnx
+diff --git a/sherpa-onnx/csrc/offline-ctc-fst-decoder.cc b/sherpa-onnx/csrc/offline-ctc-fst-decoder.cc
+index 225eaf5..2ee63c0 100644
+--- a/sherpa-onnx/csrc/offline-ctc-fst-decoder.cc
++++ b/sherpa-onnx/csrc/offline-ctc-fst-decoder.cc
+@@ -45,16 +45,43 @@ static OfflineCtcDecoderResult DecodeOne(kaldi_decoder::FasterDecoder *decoder,
+     return r;
+   }
+ 
+-  auto cur_state = decoded.Start();
+-
+-  int32_t blank_id = 0;
++  // [BranchKit engine posteriors] Flatten the linear best path first so a
++  // token's whole repeated-frame RUN is visible when scoring it against the
++  // posterior matrix. `t` mirrors the original per-arc counter (timestamps
++  // stay byte-identical to upstream); `frame` advances only on emitting arcs
++  // (ilabel != 0) and is the row index into `p` — an epsilon arc consumes no
++  // acoustic frame, so counting it would shift every later posterior lookup.
++  struct PathArc {
++    int32_t ilabel;
++    int32_t olabel;
++    int32_t t;      // upstream arc counter (timestamp domain)
++    int32_t frame;  // posterior-matrix row; -1 for epsilon arcs
++  };
++  std::vector<PathArc> path;
++  path.reserve(num_frames + 8);
+ 
+-  for (int32_t t = 0, prev = -1; decoded.NumArcs(cur_state) == 1; ++t) {
++  auto cur_state = decoded.Start();
++  for (int32_t t = 0, frame = 0; decoded.NumArcs(cur_state) == 1; ++t) {
+     fst::ArcIterator<fst::Fst<fst::LatticeArc>> iter(decoded, cur_state);
+     const auto &arc = iter.Value();
+ 
+     cur_state = arc.nextstate;
+ 
++    int32_t f = -1;
++    if (arc.ilabel != 0) {
++      f = frame;
++      ++frame;
++    }
++    path.push_back({static_cast<int32_t>(arc.ilabel),
++                    static_cast<int32_t>(arc.olabel), t, f});
++  }
++
++  int32_t blank_id = 0;
++
++  int32_t n = static_cast<int32_t>(path.size());
++  for (int32_t i = 0, prev = -1; i < n; ++i) {
++    const auto &arc = path[i];
++
+     if (arc.ilabel == prev) {
+       continue;
+     }
+@@ -67,13 +94,46 @@ static OfflineCtcDecoderResult DecodeOne(kaldi_decoder::FasterDecoder *decoder,
+ 
+     // -1 here since the input labels are incremented during graph
+     // construction
+-    r.tokens.push_back(arc.ilabel - 1);
++    int32_t token = arc.ilabel - 1;
++    r.tokens.push_back(token);
+     if (arc.olabel != 0) {
+       r.words.push_back(arc.olabel);
+     }
+ 
+-    r.timestamps.push_back(t);
++    r.timestamps.push_back(arc.t);
+     prev = arc.ilabel;
++
++    // [BranchKit engine posteriors] Score the emitted token over its frame run
++    // (consecutive same-ilabel arcs from here). Peak support = the max acoustic
++    // log-prob the model assigned this token on any frame of the run; margin =
++    // peak minus the best OTHER symbol on that same frame. The decoder already
++    // computed every number read here — this only records them.
++    float best_lp = -1e30f;
++    int32_t best_frame = -1;
++    if (token < vocab_size) {
++      for (int32_t j = i; j < n && path[j].ilabel == arc.ilabel; ++j) {
++        if (path[j].frame < 0 || path[j].frame >= num_frames) continue;
++        float lp = p[path[j].frame * vocab_size + token];
++        if (lp > best_lp) {
++          best_lp = lp;
++          best_frame = path[j].frame;
++        }
++      }
++    }
++    float margin = 0.0f;
++    if (best_frame >= 0) {
++      const float *row = p + best_frame * vocab_size;
++      float best_other = -1e30f;
++      for (int32_t k = 0; k < vocab_size; ++k) {
++        if (k == token) continue;
++        if (row[k] > best_other) best_other = row[k];
++      }
++      margin = best_lp - best_other;
++    } else {
++      best_lp = 0.0f;  // no scoreable frame; neutral rather than -inf
++    }
++    r.ys_log_probs.push_back(best_lp);
++    r.margins.push_back(margin);
+   }
+ 
+   return r;
+@@ -83,6 +143,23 @@ OfflineCtcFstDecoder::OfflineCtcFstDecoder(
+     const OfflineCtcFstDecoderConfig &config)
+     : config_(config), fst_(ReadGraph(config_.graph)) {}
+ 
++void OfflineCtcFstDecoder::SetGraph(
++    std::unique_ptr<fst::Fst<fst::StdArc>> fst) {
++  // In-memory swap (graph built by the in-process GrammarBuilder). Decode()
++  // constructs its FasterDecoder from *fst_ each call, so nothing else to do.
++  // [BranchKit offline command path]
++  fst_ = std::move(fst);
++}
++
++OfflineCtcFstDecoder::OfflineCtcFstDecoder(
++    int32_t max_active, std::unique_ptr<fst::Fst<fst::StdArc>> fst)
++    : config_(), fst_(std::move(fst)) {
++  // [BranchKit self-seed] Direct-from-graph construction — no ReadGraph, so a
++  // recognizer started with an absent graph can be promoted to the FST decoder
++  // on its first in-process grammar seed.
++  config_.max_active = max_active;
++}
++
+ std::vector<OfflineCtcDecoderResult> OfflineCtcFstDecoder::Decode(
+     Ort::Value log_probs, Ort::Value log_probs_length) {
+   std::vector<int64_t> shape = log_probs.GetTensorTypeAndShapeInfo().GetShape();
+diff --git a/sherpa-onnx/csrc/offline-ctc-fst-decoder.h b/sherpa-onnx/csrc/offline-ctc-fst-decoder.h
+index 2b33c14..5ec0095 100644
+--- a/sherpa-onnx/csrc/offline-ctc-fst-decoder.h
++++ b/sherpa-onnx/csrc/offline-ctc-fst-decoder.h
+@@ -19,9 +19,22 @@ class OfflineCtcFstDecoder : public OfflineCtcDecoder {
+  public:
+   explicit OfflineCtcFstDecoder(const OfflineCtcFstDecoderConfig &config);
+ 
++  // [BranchKit self-seed] Construct directly from an in-memory graph (built by
++  // the GrammarBuilder), bypassing ReadGraph. Used to PROMOTE a recognizer that
++  // was created with no graph (and therefore holds the greedy decoder, on which
++  // SetGraph is a no-op) to the FST decoder on the first in-process grammar
++  // seed. `max_active` bounds the FasterDecoder search beam.
++  OfflineCtcFstDecoder(int32_t max_active,
++                       std::unique_ptr<fst::Fst<fst::StdArc>> fst);
++
+   std::vector<OfflineCtcDecoderResult> Decode(
+       Ort::Value log_probs, Ort::Value log_probs_length) override;
+ 
++  // [BranchKit offline command path] Swap fst_ at runtime (in-memory graph from
++  // the GrammarBuilder). Decode() builds its FasterDecoder from *fst_ on every
++  // call, so the next decode uses the new graph with no further refresh.
++  void SetGraph(std::unique_ptr<fst::Fst<fst::StdArc>> fst) override;
++
+  private:
+   OfflineCtcFstDecoderConfig config_;
+ 
+diff --git a/sherpa-onnx/csrc/offline-recognizer-ctc-impl.h b/sherpa-onnx/csrc/offline-recognizer-ctc-impl.h
+index 8647e65..4bf2e92 100644
+--- a/sherpa-onnx/csrc/offline-recognizer-ctc-impl.h
++++ b/sherpa-onnx/csrc/offline-recognizer-ctc-impl.h
+@@ -12,6 +12,7 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "sherpa-onnx/csrc/grammar-builder.h"
+ #include "sherpa-onnx/csrc/macros.h"
+ #include "sherpa-onnx/csrc/offline-ctc-decoder.h"
+ #include "sherpa-onnx/csrc/offline-ctc-fst-decoder.h"
+@@ -31,6 +32,16 @@ OfflineRecognitionResult Convert(const OfflineCtcDecoderResult &src,
+   r.tokens.reserve(src.tokens.size());
+   r.timestamps.reserve(src.timestamps.size());
+ 
++  // [BranchKit engine posteriors] The FST decoder emits per-token scores
++  // parallel to `tokens`; thread them through the same skip logic below so the
++  // output arrays stay aligned. Other decoders leave them empty.
++  const bool has_scores = src.ys_log_probs.size() == src.tokens.size() &&
++                          src.margins.size() == src.tokens.size();
++  if (has_scores) {
++    r.ys_log_probs.reserve(src.tokens.size());
++    r.margins.reserve(src.tokens.size());
++  }
++
+   std::string text;
+ 
+   for (int32_t i = 0; i != src.tokens.size(); ++i) {
+@@ -57,6 +68,12 @@ OfflineRecognitionResult Convert(const OfflineCtcDecoderResult &src,
+     }
+ 
+     r.tokens.push_back(std::move(sym));
++    if (has_scores) {
++      // [BranchKit engine posteriors] Only tokens that survive the SIL/</s>
++      // skips above carry their score forward, keeping the arrays parallel.
++      r.ys_log_probs.push_back(src.ys_log_probs[i]);
++      r.margins.push_back(src.margins[i]);
++    }
+   }
+ 
+   if (sym_table.IsByteBpe()) {
+@@ -292,7 +309,44 @@ class OfflineRecognizerCtcImpl : public OfflineRecognizerImpl {
+ 
+   OfflineRecognizerConfig GetConfig() const override { return config_; }
+ 
++  void SetGraphFromWords(const std::vector<std::string> &words,
++                         const std::vector<float> &weights) const override {
++    // [BranchKit offline command path] Build an HL grammar from a word list
++    // IN-PROCESS and swap it onto the FST decoder. No encoder/stream state to
++    // preserve (offline decodes per-call with a fresh FasterDecoder), so this is
++    // a plain graph swap — the next DecodeStreams() uses the new grammar.
++    // `weights` (parallel to `words`, may be empty) carries the per-word
++    // decoding bias straight into the grammar build.
++    EnsureGrammarBuilder();
++    ReplaceDecoder(grammar_builder_->BuildLazy(words, weights));
++  }
++
+  private:
++  // Lazily construct the shared GrammarBuilder beside the model's tokens.txt
++  // (lexicon.txt / bpe.vocab live in the same dir). Shared by every SetGraph*
++  // entry point so the lexicon-path derivation exists exactly once.
++  void EnsureGrammarBuilder() const {
++    if (grammar_builder_) return;
++    const std::string &tokens = config_.model_config.tokens;
++    std::string dir;
++    auto pos = tokens.find_last_of("/\\");
++    if (pos != std::string::npos) dir = tokens.substr(0, pos + 1);
++    grammar_builder_ = std::make_unique<GrammarBuilder>(
++        tokens, dir + "lexicon.txt", dir + "bpe.vocab");
++  }
++
++  // [BranchKit lazy composition + self-seed] Swap the freshly built grammar in
++  // by RECONSTRUCTING the FST decoder (the ctor takes the abstract fst::Fst,
++  // materialized or delayed). Replacement, not SetGraph: a recognizer created
++  // with no graph holds the greedy decoder, where SetGraph is a no-op.
++  // Offline CTC decoders are stateless between Decode() calls (the
++  // FasterDecoder is rebuilt per call from *fst_), so this loses nothing.
++  void ReplaceDecoder(std::unique_ptr<fst::Fst<fst::StdArc>> g) const {
++    decoder_ = std::make_unique<OfflineCtcFstDecoder>(
++        config_.ctc_fst_decoder_config.max_active, std::move(g));
++  }
++
++
+   // Decode a single stream.
+   // Some models do not support batch size > 1, e.g., WeNet CTC models.
+   void DecodeStream(OfflineStream *s) const {
+@@ -339,7 +393,12 @@ class OfflineRecognizerCtcImpl : public OfflineRecognizerImpl {
+   OfflineRecognizerConfig config_;
+   SymbolTable symbol_table_;
+   std::unique_ptr<OfflineCtcModel> model_;
+-  std::unique_ptr<OfflineCtcDecoder> decoder_;
++  // mutable: the const SetGraphFromWords swap REPLACES the decoder (greedy->FST
++  // promotion for the self-seed path), not just the graph inside it. [BranchKit]
++  mutable std::unique_ptr<OfflineCtcDecoder> decoder_;
++  // Lazily built on the first SetGraphFromWords; reused across swaps (the CTC
++  // topo H is cached inside). mutable so the const swap method can init it.
++  mutable std::unique_ptr<GrammarBuilder> grammar_builder_;
+ };
+ 
+ }  // namespace sherpa_onnx
+diff --git a/sherpa-onnx/csrc/offline-recognizer-impl.h b/sherpa-onnx/csrc/offline-recognizer-impl.h
+index 64d7df2..aebbc6e 100644
+--- a/sherpa-onnx/csrc/offline-recognizer-impl.h
++++ b/sherpa-onnx/csrc/offline-recognizer-impl.h
+@@ -47,6 +47,16 @@ class OfflineRecognizerImpl {
+ 
+   virtual OfflineRecognizerConfig GetConfig() const = 0;
+ 
++  // [BranchKit offline command path] Build a CTC decoding graph from a word
++  // list IN-PROCESS and swap it onto the decoder. Default no-op; overridden by
++  // the CTC impl. No OfflineStream arg: the offline decoder is shared and
++  // stateless per-call, so the swap is on the recognizer, not per-stream.
++  // `weights` (parallel to `words`, may be empty) carries the per-word
++  // decoding bias.
++  virtual void SetGraphFromWords(
++      const std::vector<std::string> & /*words*/,
++      const std::vector<float> & /*weights*/ = {}) const {}
++
+   std::string ApplyInverseTextNormalization(std::string text) const;
+ 
+   std::string ApplyHomophoneReplacer(std::string text) const;
+diff --git a/sherpa-onnx/csrc/offline-recognizer.cc b/sherpa-onnx/csrc/offline-recognizer.cc
+index cc819bf..bc5807b 100644
+--- a/sherpa-onnx/csrc/offline-recognizer.cc
++++ b/sherpa-onnx/csrc/offline-recognizer.cc
+@@ -18,6 +18,7 @@
+ #endif
+ 
+ #include "sherpa-onnx/csrc/file-utils.h"
++#include "sherpa-onnx/csrc/grammar-builder.h"
+ #include "sherpa-onnx/csrc/macros.h"
+ #include "sherpa-onnx/csrc/offline-lm-config.h"
+ #include "sherpa-onnx/csrc/offline-recognizer-impl.h"
+@@ -182,6 +183,12 @@ OfflineRecognizerConfig OfflineRecognizer::GetConfig() const {
+   return impl_->GetConfig();
+ }
+ 
++void OfflineRecognizer::SetGraphFromWords(
++    const std::vector<std::string> &words,
++    const std::vector<float> &weights) const {
++  impl_->SetGraphFromWords(words, weights);
++}
++
+ #if __ANDROID_API__ >= 9
+ template OfflineRecognizer::OfflineRecognizer(
+     AAssetManager *mgr, const OfflineRecognizerConfig &config);
+diff --git a/sherpa-onnx/csrc/offline-recognizer.h b/sherpa-onnx/csrc/offline-recognizer.h
+index 1fcc101..580b89e 100644
+--- a/sherpa-onnx/csrc/offline-recognizer.h
++++ b/sherpa-onnx/csrc/offline-recognizer.h
+@@ -125,6 +125,14 @@ class OfflineRecognizer {
+ 
+   OfflineRecognizerConfig GetConfig() const;
+ 
++  // [BranchKit offline command path] Build a CTC decoding graph from a word
++  // list IN-PROCESS and swap it in (Direction 2 on the offline engine). Only
++  // affects a recognizer using the CTC FST decoder; a no-op otherwise.
++  // `weights` (parallel to `words`, may be empty) carries the per-word
++  // decoding bias into the grammar build.
++  void SetGraphFromWords(const std::vector<std::string> &words,
++                         const std::vector<float> &weights = {}) const;
++
+  private:
+   std::unique_ptr<OfflineRecognizerImpl> impl_;
+ };
+diff --git a/sherpa-onnx/csrc/offline-stream.cc b/sherpa-onnx/csrc/offline-stream.cc
+index 196b571..0758808 100644
+--- a/sherpa-onnx/csrc/offline-stream.cc
++++ b/sherpa-onnx/csrc/offline-stream.cc
+@@ -461,6 +461,19 @@ std::string OfflineRecognitionResult::AsJsonString() const {
+   }
+   os << "], ";
+ 
++  // [BranchKit engine posteriors] per-token argmax margins (FST decoder only).
++  os << "\""
++     << "margins"
++     << "\""
++     << ": ";
++  os << "[";
++  sep = "";
++  for (auto m : margins) {
++    os << sep << std::fixed << std::setprecision(6) << m;
++    sep = ", ";
++  }
++  os << "], ";
++
+   sep = "";
+ 
+   os << "\""
+diff --git a/sherpa-onnx/csrc/offline-stream.h b/sherpa-onnx/csrc/offline-stream.h
+index 9411fe0..d91cb98 100644
+--- a/sherpa-onnx/csrc/offline-stream.h
++++ b/sherpa-onnx/csrc/offline-stream.h
+@@ -45,6 +45,11 @@ struct OfflineRecognitionResult {
+   /// ys_log_probs[i] contains the log probability (confidence) for tokens[i].
+   std::vector<float> ys_log_probs;
+ 
++  /// [BranchKit engine posteriors] margins[i] = ys_log_probs[i] minus the best
++  /// competing symbol's log-prob at the same frame (CTC FST decoder only).
++  /// Positive = the token was the frame argmax; negative = grammar coercion.
++  std::vector<float> margins;
++
+   // Word IDs from FST decoding (CTC models with FST decoder only).
+   std::vector<int32_t> words;
+ 

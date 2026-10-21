@@ -1,0 +1,39 @@
+{
+  "preset": "log",
+  "lifecycle": {
+    "type": "retention",
+    "retention_days": 180
+  },
+  "privacy": {
+    "default_recording": true,
+    "reason_for_default_on": "calibration accuracy data is essential for tuning recognition — users see results in the calibration UI"
+  },
+  "description": "Per-attempt recognition records from calibration and live usage.",
+  "fields": [
+    {
+      "key": "target",
+      "field_type": "string",
+      "label": "Target word"
+    },
+    {
+      "key": "heard",
+      "field_type": "string",
+      "label": "Recognized text"
+    },
+    {
+      "key": "matched",
+      "field_type": "boolean",
+      "label": "Matched"
+    },
+    {
+      "key": "source",
+      "field_type": "string",
+      "label": "Source"
+    },
+    {
+      "key": "group",
+      "field_type": "string",
+      "label": "Command group"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+[package]
+name = "sherpa-commands"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "sherpa_commands"
+path = "src/main.rs"
+
+[dependencies]
+branchkit-stage-sdk = { workspace = true }
+chrono = "0.4"
+sherpa-onnx-sys = "1.13.2"
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+hound = { workspace = true }
+
+# The stage depends on the MIT stage SDK only (out-of-tree buildable — the
+# model root arrives via env). Not even as a dev-dependency: its
+# end-to-end test drives the built binary through the platform's
+# orchestrator in the platform's own end-to-end voice test, so testing this
+# crate never compiles the platform.

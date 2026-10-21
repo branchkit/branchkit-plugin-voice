@@ -1,0 +1,30 @@
+{
+  "preset": "log",
+  "privacy": {
+    "default_recording": true,
+    "reason_for_default_on": "per-clip fragility readouts drive the per-target verdict + the clip history shown in the calibration recordings UI — the feature's whole purpose"
+  },
+  "description": "Per-clip fragility readings (one entry per clip × probe-run): outcome (held/fragile/fails_clean), fall SNR, per-word confuser, the model version it ran on. Append-only history keyed by clip file; the per-target verdict is derived from these.",
+  "fields": [
+    {
+      "key": "file",
+      "field_type": "string",
+      "label": "Clip file"
+    },
+    {
+      "key": "target",
+      "field_type": "string",
+      "label": "Target"
+    },
+    {
+      "key": "outcome",
+      "field_type": "string",
+      "label": "Outcome"
+    },
+    {
+      "key": "model",
+      "field_type": "string",
+      "label": "Model version"
+    }
+  ]
+}

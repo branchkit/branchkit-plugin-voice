@@ -1,0 +1,20 @@
+# Voice's pipeline stages: one Cargo workspace, built by voice's own recipe
+# the way any plugin builds the stages it ships. Swift's whisperkit-stt sits
+# beside these with its own package.
+#
+# sherpa-commands links a PATCHED sherpa-onnx (grammar-constrained decoding,
+# patches/ beside it): build-patched-sherpa.sh builds it once per target and
+# SHERPA_ONNX_LIB_DIR points the build at the result. Without it the crate
+# would silently link the stock release libraries and lose the grammar API.
+[workspace]
+members = ["sherpa-commands", "whisper-stt", "vad-gate", "refine-llm"]
+resolver = "2"
+
+[workspace.dependencies]
+# The stage SDK at the commit the app pins. Moving it is a deliberate bump,
+# as for any plugin that ships a stage.
+branchkit-stage-sdk = { git = "https://github.com/branchkit/stage-sdk", rev = "d9c06d3c7982df0da0488f195ace14315eb0e7e8" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+hound = "3.5"

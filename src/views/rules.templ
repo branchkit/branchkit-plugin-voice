@@ -1,0 +1,345 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "github.com/branchkit/plugin-sdk-go/ui"
+import "fmt"
+
+func commandTabClass(active bool) string {
+	if active {
+		return "command-tab active"
+	}
+	return "command-tab"
+}
+
+func editingClass(editing bool) string {
+	if editing {
+		return " editing"
+	}
+	return ""
+}
+
+templ Rules(data RulesViewData) {
+	<div class="rules-tab">
+		<div class="rules-toolbar">
+			<div class="rules-engine-text">{ data.Listening }</div>
+			<button
+				class="small"
+				data-on:click={ branchkit.MethodPost("settings/rules/editor-open", "") }
+			>+ New command</button>
+		</div>
+		<datalist id="known-tags-list">
+			for _, tag := range data.KnownTags {
+				<option value={ tag }></option>
+			}
+		</datalist>
+		<div class="rules-split">
+		<div
+			class="rules-catalog"
+			data-signals="{activecat: ''}"
+			data-on:scroll__throttle.100ms="$activecat = (Array.from(el.querySelectorAll('section.rule-category')).findLast(s => s.getBoundingClientRect().top <= el.getBoundingClientRect().top + 60)?.id || '').slice(4)"
+		>
+		if len(data.Tabs) > 0 {
+			<div class="command-tabs">
+				for _, tab := range data.Tabs {
+					<button
+						class={ commandTabClass(tab.Active) }
+						data-on:click={ "$commandFilter = " + ui.JS(tab.Name) + "; " + branchkit.MethodPost("settings/command-filter", "") }
+					>{ tab.Name }</button>
+				}
+			</div>
+		}
+		if len(data.Groups) > 1 {
+			<div class="category-jump">
+				for _, g := range data.Groups {
+					<button
+						class="category-chip"
+						data-class:active={ fmt.Sprintf("$activecat === '%s'", slugify(g.Name)) }
+						data-on:click={ fmt.Sprintf("document.getElementById('cat-%s').scrollIntoView({behavior: 'smooth', block: 'start'})", slugify(g.Name)) }
+					>
+						{ g.Name }
+						<span class="chip-count">{ fmt.Sprintf("%d", g.Count) }</span>
+					</button>
+				}
+			</div>
+		}
+		for _, g := range data.Groups {
+			<section class="rule-category" id={ "cat-" + slugify(g.Name) }>
+				<div class="rule-category-header">{ g.Name }</div>
+				for _, rule := range g.Rules {
+					<div
+						role="button" tabindex="0"
+						id={ "rule-" + slugify(rule.Canonical) }
+						class={ "settings-row rule-row rule-row--editable " + rule.ModifiedClass + editingClass(rule.IsBeingEdited), templ.KV("rule-row--selected", rule.Canonical == data.SelectedCanonical) }
+						data-on:click={ branchkit.MethodPost("settings/rules/select", ui.Args("canonical", rule.Canonical)) }
+					>
+						@ruleCardContent(rule)
+					</div>
+				}
+			</section>
+		}
+		</div>
+		<div class="rules-inspector">
+			<div class="rules-test">
+				<div class="rules-test-head">
+					<div class="rules-test-label">Test a phrase</div>
+				</div>
+				<input
+					type="text"
+					placeholder="Type a phrase to test..."
+					class="rules-test-input"
+					data-bind:testPhrase
+					data-on:input__debounce.300ms={ branchkit.MethodPost("settings/rules/test", "") }
+				/>
+				@TestResult(data.TestResult)
+			</div>
+			if data.Editor.Open {
+				@EditorForm(data.Editor)
+			} else if data.HasLocked {
+				// The inspector is the form, locked:
+				// the same three boxes, read-only, and Customize removes the lock.
+				@EditorForm(data.Locked)
+			} else {
+				<div class="rules-detail-empty">
+					<p>Select a command to see what it does — or type a phrase above to find out what it would match.</p>
+				</div>
+			}
+		</div>
+		</div>
+	</div>
+	<style>
+		@keyframes record-pulse {
+			0%, 100% { border-color: var(--brand-accent-0); box-shadow: 0 0 0 0 color-mix(in oklab, var(--brand-accent-0) 40%, transparent); }
+			50% { border-color: var(--brand-accent-0); box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand-accent-0) 15%, transparent); }
+		}
+		.recording-pulse { animation: record-pulse calc(var(--anim-duration-4) * 4) var(--anim-ease-pulse) infinite; border-color: var(--brand-accent-0) !important; }
+		/* The editor docks INTO the inspector pane — no overlay, no
+		   reflow of the list, the same surface the read detail uses. */
+		.editor-pane {
+			border-top: var(--border-width-0) solid var(--neutral-variant-3);
+			padding-top: var(--size-0);
+		}
+		.rules-tab { height: calc(100vh - 40px); min-height: 420px; display: flex; flex-direction: column; gap: var(--size--2); }
+		.rules-toolbar { flex-shrink: 0; display: flex; align-items: center; gap: var(--size-0); padding: var(--size--2) var(--size--2) 0; }
+		.rules-toolbar .rules-engine-text { flex: 1; }
+		.rules-split { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: var(--size-0); }
+		.rules-catalog { min-height: 0; overflow-y: auto; border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-3); }
+		.rules-inspector { min-height: 0; overflow-y: auto; border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-3); padding: var(--size-0); display: flex; flex-direction: column; gap: var(--size-0); container-type: inline-size; container-name: inspector; }
+		@container settings-pane (max-width: 720px) {
+			.rules-tab { height: auto; }
+			.rules-split { grid-template-columns: 1fr; }
+			.rules-catalog { max-height: 50vh; }
+		}
+		.rule-row--selected {
+			box-shadow: inset 2px 0 0 var(--brand-accent-0);
+			background: color-mix(in oklab, var(--brand-accent-0) 6%, transparent);
+		}
+		.rules-detail__head { display: flex; align-items: center; gap: var(--size--2); }
+		.rules-detail__meta { font-size: var(--font-size--2); color: var(--_ink-dim); margin-top: var(--size--2); }
+		.rules-detail__reading { font-size: var(--font-size--1); color: var(--_ink-dim); line-height: 1.55; margin: var(--size--2) 0 0; }
+		.rules-detail__actions { display: flex; gap: var(--size--2); margin-top: var(--size-0); }
+		.rules-detail-empty { color: var(--_ink-dim); font-size: var(--font-size--1); line-height: 1.55; }
+		/* The gated-why answer: the miss that isn't a mystery. */
+		.tr-gated {
+			margin-top: var(--size--2);
+			font-size: var(--font-size--2);
+			color: var(--_ink-dim);
+			line-height: 1.6;
+			border-left: var(--border-width-1) solid var(--brand-accent-0);
+			padding-left: var(--size--2);
+		}
+		.tr-gated code { font-family: var(--font-mono); color: var(--_ink); background: var(--neutral-3); border-radius: var(--border-radius-0); padding: 0 var(--size--2); }
+		.settings-row.editing {
+			box-shadow: inset 2px 0 0 var(--brand-accent-0);
+			background: color-mix(in oklab, var(--brand-accent-0) 6%, transparent);
+		}
+		.category-jump {
+			position: sticky;
+			top: 0;
+			z-index: 6;
+			display: flex;
+			gap: 6px;
+			align-items: center;
+			padding: var(--size--2) var(--size-0);
+			background: var(--neutral-1);
+			--_ink: var(--neutral-1-on);
+			--_ink-dim: var(--neutral-1-dim);
+			border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+			overflow-x: auto;
+			scrollbar-width: none;
+		}
+		.category-jump::-webkit-scrollbar { display: none; }
+		.category-chip {
+			padding: var(--size--2) var(--size--2);
+			border-radius: var(--radius-pill);
+			border: var(--border-width-0) solid var(--neutral-variant-3);
+			background: transparent;
+			color: var(--_ink-dim);
+			font-size: var(--font-size--2);
+			cursor: pointer;
+			white-space: nowrap;
+			flex-shrink: 0;
+		}
+		.category-chip:hover { color: var(--_ink); border-color: var(--_ink-dim); }
+		.category-chip.active {
+			color: var(--accent-text);
+			border-color: var(--brand-accent-0);
+			background: color-mix(in oklab, var(--brand-accent-0) 8%, transparent);
+		}
+		.chip-count { opacity: 0.7; font-size: var(--font-size--2); margin-left: var(--size--2); }
+		.rule-category { scroll-margin-top: var(--size-7); }
+		.rule-category-header {
+			position: sticky;
+			top: 41px;
+			z-index: 5;
+			padding: var(--size--2) var(--size-0) var(--size--2);
+			background: var(--neutral-1);
+			--_ink: var(--neutral-1-on);
+			--_ink-dim: var(--neutral-1-dim);
+			font-size: var(--font-size--1);
+			font-weight: 600;
+			color: var(--_ink-dim);
+		}
+		.seq-step { display: flex; gap: var(--size--2); align-items: center; }
+		.recording-active { background: color-mix(in oklab, var(--brand-accent-0) 15%, transparent) !important; border-color: var(--brand-accent-0) !important; }
+		/* Was .settings-row[style*="cursor: pointer"]:hover — a selector matching on
+		   the TEXT of the inline style attribute the editable rows carried. Moving
+		   that attribute into a class would have silently killed this hover, and no
+		   computed-style snapshot can see a :hover state. */
+		.rule-row--editable:hover { background: var(--neutral-3); }
+		/* The !important on gap, padding and border-bottom existed to beat this
+		   element's own inline style, which set gap: 0, padding: 0 16px and a
+		   border-bottom this rule then removed. With the attribute gone there is
+		   nothing left to out-rank, and display: flex — the one inline
+		   declaration that was doing any work — moves in. */
+		.command-tabs {
+			display: flex;
+			background: var(--scrim-under-2);
+			gap: 2px;
+			padding: var(--size--2) var(--size-0) 0;
+			border-bottom: none;
+		}
+		.rules-engine-text { font-size: var(--font-size--2); color: var(--_ink-dim); }
+		.rules-engine-name { font-weight: 500; color: var(--_ink); }
+
+		/* Type a phrase, see which rule it would match. Lives at the top of
+		   the inspector pane: always in reach, beside whatever is selected. */
+		.rules-test { flex-shrink: 0; border-bottom: var(--border-width-0) solid var(--neutral-variant-3); padding-bottom: var(--size--2); }
+		.rules-test-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: var(--size--2);
+		}
+		.rules-test-label { font-size: var(--font-size--2); font-weight: 600; color: var(--_ink-dim); }
+		/* input[type="text"] in settings-components.css is (0,1,1) and a bare
+		   class is (0,1,0), so the class LOSES — the inline style this replaced
+		   was the only thing that had been beating it. Qualifying the selector
+		   is what makes the move a no-op. Anything converting a styled element
+		   type — input, button, select, textarea — has to check what the shared
+		   sheet already says about that tag. */
+		input[type="text"].rules-test-input {
+			width: 100%;
+			padding: var(--size--2) var(--size--2);
+			border-radius: var(--border-radius-0);
+			border: var(--border-width-0) solid var(--neutral-variant-3);
+			background: var(--neutral-3);
+			--_ink: var(--neutral-3-on);
+			--_ink-dim: var(--neutral-3-dim);
+			color: var(--_ink);
+			font-size: var(--font-size--1);
+			font-family: var(--font-mono);
+		}
+
+		/* One rule in the list. Editable rows open the editor on click, which is
+		   the only thing separating the two variants. */
+		.rule-row {
+			display: flex;
+			flex-direction: column;
+			align-items: stretch;
+			gap: 4px;
+			padding: var(--size--2) var(--size-0);
+		}
+		.rule-row--editable { cursor: pointer; }
+
+		/* The card inside a row: phrase and badges on one line, the plain-language
+		   reading beneath. */
+		.rule-card,
+		.rule-card-head { display: flex; align-items: center; gap: var(--size--2); }
+		.rule-phrase { font-size: var(--font-size--1); font-weight: 600; color: var(--_ink); }
+		.rule-detail { font-size: var(--font-size--2); color: var(--_ink-dim); margin-top: var(--size--2); }
+
+		.command-tab {
+			padding: var(--size--2) var(--size-0);
+			font-size: var(--font-size--1);
+			background: transparent;
+			border: var(--border-width-0) solid transparent;
+			border-bottom: none;
+			border-radius: var(--border-radius-1) var(--border-radius-1) 0 0;
+			color: var(--_ink-dim);
+			cursor: pointer;
+			font-weight: 400;
+		}
+		.command-tab:hover { color: var(--_ink); background: var(--neutral-3); }
+		.command-tab.active {
+			color: var(--_ink);
+			font-weight: 500;
+			background: var(--neutral-1);
+			--_ink: var(--neutral-1-on);
+			--_ink-dim: var(--neutral-1-dim);
+			border-color: var(--neutral-variant-3);
+			border-bottom: var(--border-width-1) solid var(--brand-accent-0);
+			margin-bottom: calc(-1 * var(--size--2));
+		}
+	</style>
+}
+
+templ ruleCardContent(rule RuleCardView) {
+	<div class="rule-card">
+		<div class="grow">
+			<div class="rule-card-head">
+				<code class="rule-phrase">{ rule.DisplayPhrase }</code>
+				if rule.IsUser {
+					<span class="badge badge-user">User</span>
+				}
+				if len(rule.BlockedReasons) > 0 {
+					<span class="badge badge-error">Off</span>
+				}
+			</div>
+			for _, why := range rule.BlockedReasons {
+				<div class="rule-detail">{ why }</div>
+			}
+			if rule.HasNL {
+				<div class="rule-detail">
+					{ rule.NL.Trigger }
+					if rule.NL.Condition != "" {
+						{ " " + rule.NL.Condition }
+					}
+					{ " \u2192 " + rule.NL.Effect }
+					if rule.NL.SideEffect != "" {
+						{ ", " + rule.NL.SideEffect }
+					}
+				</div>
+			} else if rule.Description != "" {
+				<div class="rule-detail">{ rule.Description }</div>
+			}
+		</div>
+		if rule.IsUser {
+			<div class="row-actions">
+				<button
+					class="icon-btn"
+					title="Delete command"
+					data-on:click__stop={ branchkit.MethodPost("commands/delete", ui.Args("canonical", rule.Canonical)) }
+				>
+					@templ.Raw("&#10005;")
+				</button>
+				<button
+					class="icon-btn"
+					title="Reset to default"
+					data-on:click__stop={ branchkit.MethodPost("commands/reset", ui.Args("canonical", rule.Canonical)) }
+				>
+					@templ.Raw("&#8634;")
+				</button>
+			</div>
+		}
+	</div>
+}

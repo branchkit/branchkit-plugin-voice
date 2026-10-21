@@ -1,0 +1,4 @@
+.build/
+# Package.resolved is COMMITTED, deliberately. This package builds a shipped
+# executable, not a library, so the exact dependency graph is part of the
+# artifact — and the privacy claim is verified against specific versions.

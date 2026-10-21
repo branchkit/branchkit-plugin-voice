@@ -1,0 +1,154 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "fmt"
+
+// Recordings — the voice library as its own tab (decided 2026-09-11).
+// This is the system of record for the user's voice
+// data: the consent banner and keep policy lead, the full clip library follows.
+// Calibration keeps only the working set (the selected command's clips, docked
+// under its stage) plus a link here. When dictation recordings arrive, they
+// join this tab. The clip/group/chip sub-templates are shared with calibration
+// (same package) so the two surfaces can never drift.
+templ Recordings(data RecordingsViewData) {
+	<div class="calibration-container">
+		if !data.CaptureSupported {
+			<p class="cal-section-desc">Recording your voice needs the command model. Download it on the Get started tab.</p>
+		} else {
+			<div class="cal-capture-row">
+				<p class="cal-section-desc">While you calibrate, BranchKit records your voice <strong>on-device</strong> to learn which words are hardest to recognize for you — and, if you like, keeps the clips as your personal voice library. Recording happens only during a calibration session; turn it off any time.</p>
+				<button
+					class={ "cal-capture-toggle", templ.KV("cal-capture-toggle--on", data.CaptureEnabled) }
+					data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("set_calibration_capture") + "', {payload: {enabled: %t}})", !data.CaptureEnabled) }
+					title="Record your calibration audio (on-device)">
+					if data.CaptureEnabled {
+						On
+					} else {
+						Off
+					}
+				</button>
+			</div>
+			if data.CaptureEnabled {
+				<div class="cal-capture-retention">
+					<span class="cal-capture-retention-label">Keep recordings:</span>
+					@capRetentionBtn(data.CaptureRetention, "delete_after_analysis", "Don't keep", "Analyze each clip, then delete it — keep only the accuracy readout, no audio saved")
+					@capRetentionBtn(data.CaptureRetention, "keep_bounded", "Keep recent", "Keep a small recent set (latest per word) — bounded, never grows")
+					@capRetentionBtn(data.CaptureRetention, "keep_all", "Keep all", "Keep every recording — builds your personal voice library")
+				</div>
+			}
+			if len(data.RecordingGroups) > 0 {
+				<div class="cal-recordings">
+					<div class="cal-recordings__head">
+						<span class="cal-recordings__title">{ fmt.Sprintf("%d clip%s saved", data.RecordingsTotal, plural(data.RecordingsTotal)) }</span>
+						if data.RecordingsTotal > data.RecordingsShown {
+							<span class="cal-recordings__count">showing { fmt.Sprintf("%d of %d", data.RecordingsShown, data.RecordingsTotal) }</span>
+						}
+						<a href="/allcommands" target="_top" class="cal-recordings__bias-link" title="The never-standalone penalty (what these per-recording bias scores are measured against) is a platform setting — view and tune its strength on the Commands page.">
+							command recognition bias &#8599; Commands
+						</a>
+						<span class="cal-recordings__actions">
+							<button class="cal-cap-reprobe"
+								data-on:click={ branchkit.MethodPost("reprobe_fragility", `{target: ''}`) }
+								title="Re-decode every kept clip through the fragility ladder again, appending a fresh reading to each clip's history — use after a model change to compare">Re-probe all</button>
+							<button class="cal-cap-reprobe"
+								data-on:click={ branchkit.MethodPost("score_bias", `{target: ''}`) }
+								title="Sweep the never-standalone penalty over every kept clip and score each clip's flip threshold (how much bias it takes to decode correctly)">Score bias all</button>
+							<button class="cal-cap-export"
+								data-on:click={ branchkit.MethodPost("export_clips", `{confirmed_only: false}`) }
+								title="Save your usable recordings (excludes 'said it wrong') + a training manifest as a tar.gz in Downloads — a local file you can share to help improve the model">Export</button>
+							<button class="cal-capture-clear"
+								data-on:click={ branchkit.MethodPost("clear_captures", `{}`) }
+								title="Delete all saved recordings + the index (the accuracy readouts are kept)">Clear all</button>
+						</span>
+					</div>
+					if data.ExportStatus != "" {
+						<div class="cal-rec-export-status">{ data.ExportStatus }</div>
+					}
+					<div class="cal-rec-bias-manual" title="The never-standalone penalty — lowers the recognizer's preference for words that can only ever appear mid-command, so a command word wins genuinely close calls. A few points (2–8) tip close calls; large values can override clear matches. Score bias all measures your clips and recommends a strength below.">
+						<span class="cal-rec-bias-manual__label">Recognition bias</span>
+						<bk-toggle
+							if data.BiasEnabled {
+								checked
+							}
+							data-on:change={ "@post('" + branchkit.MethodURL("set_bias") + "', {payload: {enabled: evt.detail.checked}})" }
+						></bk-toggle>
+						<input
+							type="range"
+							min="0"
+							max="32"
+							step="1"
+							value={ data.BiasStrength }
+							if !data.BiasEnabled {
+								disabled
+							}
+							class="cal-rec-bias-manual__slider"
+							data-on:change={ "@post('" + branchkit.MethodURL("set_bias") + "', {payload: {strength: parseFloat(el.value)}})" }
+						/>
+						<span class="cal-rec-bias-manual__value">
+							if data.BiasEnabled {
+								{ data.BiasStrength }
+							} else {
+								off
+							}
+						</span>
+						<span class="cal-rec-bias-manual__prov">{ data.BiasProvenance }</span>
+					</div>
+					if data.BiasRecommendLabel != "" {
+						<div class="cal-rec-bias-recommend">
+							<span class="cal-rec-bias-recommend__label" title="Folded from each clip's strength-sweep score: the lowest strength that flips every savable mishear, kept under where correct commands start regressing">{ data.BiasRecommendLabel }</span>
+							if data.BiasRecommendOK {
+								if data.BiasApplyNeedsConfirm {
+									<button
+										class="cal-cap-reprobe"
+										data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("apply_bias") + "', {payload: {strength: %s, force: true}})", data.BiasRecommendStrength) }
+										title="Replace the manually-set strength above with the calibration recommendation">Replace manual setting</button>
+								} else {
+									<button
+										class="cal-cap-reprobe"
+										data-on:click={ fmt.Sprintf("@post('" + branchkit.MethodURL("apply_bias") + "', {payload: {strength: %s}})", data.BiasRecommendStrength) }
+										title="Apply this strength to the recognition bias — the control above will show it as set by calibration">Apply</button>
+								}
+							}
+							if data.BiasApplyStatus != "" {
+								<span class="cal-rec-bias-recommend__status">{ data.BiasApplyStatus }</span>
+							}
+						</div>
+					}
+					<div class="cal-rec-filters">
+						<input
+							type="text"
+							class="cal-rec-search"
+							placeholder="Search by command…"
+							autocomplete="off"
+							data-bind:rec-search/>
+						<span class="cal-rec-chips">
+							@recChip("", "All")
+							@recChip("needs_review", "Needs review")
+							@recChip("confirmed", "Said right")
+							@recChip("misspoke", "Said wrong")
+						</span>
+						<span class="cal-rec-views">
+							@recViewBtn(data.RecordingsView, "grouped", "By command")
+							@recViewBtn(data.RecordingsView, "recent", "Most recent")
+						</span>
+					</div>
+					if data.RecordingsView == "recent" {
+						<div class="cal-recordings__flat">
+							for _, r := range data.RecordingsFlat {
+								@calRecordingClip(r, true)
+							}
+						</div>
+					} else {
+						<div class="cal-recordings__groups">
+							for _, g := range data.RecordingGroups {
+								@calRecordingGroup(g)
+							}
+						</div>
+					}
+				</div>
+			} else {
+				<p class="cal-section-desc">No clips yet — run a calibration test with recording on and they land here.</p>
+			}
+		}
+	</div>
+}

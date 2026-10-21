@@ -1,0 +1,273 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "github.com/branchkit/plugin-sdk-go/ui"
+import "fmt"
+
+// Get started: everything voice needs from this computer, on one tab — the
+// microphone, the speech models, and the three checks. It is
+// also the body of voice's one fold on the platform's Setup page, so it stays
+// compact.
+
+// keys renders a chord as keycaps, side by side the way each OS's own
+// menus show them (⌥T on macOS). It is a component, so a sentence that
+// names keys is split around it: templ reads `@` as a call only at the
+// start of a line, and mid-text it prints the source.
+templ keys(caps []string) {
+	for _, c := range caps {
+		<kbd>{ c }</kbd>
+	}
+}
+
+templ GetStarted(data GetStartedViewData) {
+	<div class="setup-tab get-started">
+		<p class="model-section-note">
+			Everything voice needs from this computer: the microphone, the speech models, and a quick check that it all works. Nothing you say leaves this computer.
+		</p>
+		<bk-cards>
+			<bk-card label="Microphone" full>
+				@micMenu(data.Mic)
+			</bk-card>
+			<bk-card label="Speech models" full>
+				@SetupModels(data.Models)
+			</bk-card>
+			<bk-card label="Check it works" full>
+				@SetupTry(data.Try)
+			</bk-card>
+		</bk-cards>
+	</div>
+}
+
+// micMenu is the input device menu. One microphone serves dictation and
+// voice commands alike, and the note says so.
+templ micMenu(m MicMenuView) {
+	<div class="mic-row">
+		<label class="sr-only" for="mic-select">Microphone</label>
+		<select
+			id="mic-select"
+			class="hud-channel-select mic-select"
+			data-on:change={ "@post('" + branchkit.MethodURL("microphone_set") + "', {payload: {uid: evt.target.value}})" }
+		>
+			<option value="" selected?={ m.UID == "" }>
+				if m.DefaultName != "" {
+					{ "System default (" + m.DefaultName + ")" }
+				} else {
+					System default
+				}
+			</option>
+			for _, d := range m.Mics {
+				<option value={ d.UID } selected?={ d.UID == m.UID }>{ d.Name }</option>
+			}
+			if m.UID != "" && !m.Connected {
+				<option value={ m.UID } selected>{ m.Name + " (not connected)" }</option>
+			}
+		</select>
+	</div>
+	<p class="check-desc">
+		if m.UID != "" && !m.Connected {
+			Not connected, so the system default is used until it's back.
+		} else {
+			Used for dictation and voice commands.
+		}
+	</p>
+}
+
+templ SetupModels(data SetupModelsViewData) {
+	<div class="models-tab setup-tab">
+		<p class="model-section-note">
+			Speech is recognized on this computer. Pick a size for dictation — bigger is more accurate and slower to download.
+		</p>
+		<div class="model-row model-lang-row">
+			<label class="model-lang-label grow" for="dict-lang">Dictation language</label>
+			<select
+				id="dict-lang"
+				class="model-lang-select"
+				data-bind="dictLang"
+				data-on:change={ branchkit.MethodPost("config/update", `{language: $dictLang}`) }
+			>
+				for _, lang := range data.Languages {
+					<option value={ lang.Code } selected?={ lang.Selected }>{ lang.Label }</option>
+				}
+			</select>
+		</div>
+		if data.Downloading {
+			<div class="model-block">
+				<div class="model-progress-head">
+					<span>Downloading…</span>
+					<span>{ fmt.Sprintf("%d%%", data.ProgressPct) }</span>
+				</div>
+				<div class="model-progress">
+					<div class="model-progress-fill" style={ data.ProgressStyle() }></div>
+				</div>
+			</div>
+		} else if data.OtherDownload != "" {
+			<div class="model-block" role="status" id="setup-other-download">
+				<div class="model-progress-head">
+					<span>{ data.OtherDownload + ". Downloads run one at a time, so voice's Download buttons come back when it finishes." }</span>
+				</div>
+			</div>
+		} else if data.DownloadError != "" {
+			<div class="model-block" role="alert">
+				<div class="model-progress-head">
+					<span>{ "Download failed: " + data.DownloadError }</span>
+				</div>
+			</div>
+		}
+		<div class="setup-models" role="list">
+			for _, m := range data.Models {
+				<div class="model-row setup-model" role="listitem">
+					<div class="grow">
+						<div class="model-title">{ m.Size }</div>
+						<div class="model-desc">
+							{ m.Bytes } · { m.Languages }
+							if m.Note != "" {
+								· { m.Note }
+							}
+						</div>
+					</div>
+					<div class="model-actions">
+						if m.Chosen && m.Downloaded {
+							<span class="badge badge-core">In use</span>
+						} else if m.Chosen {
+							if data.OtherDownload != "" {
+								<button class="small primary" disabled aria-describedby="setup-other-download">Download</button>
+							} else if !data.Downloading {
+								<button class="small primary" data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", m.Ref)) }>Download</button>
+							}
+						} else if m.Downloaded {
+							<button class="small" data-on:click={ branchkit.MethodPost("model/set", ui.Args("name", m.Name)) }>Use</button>
+							<button class="icon-btn" title={ "Delete the " + m.Size + " model" } aria-label={ "Delete the " + m.Size + " model" }
+								data-on:click={ branchkit.MethodPost("model/delete", ui.Args("ref", m.Ref)) }>&#128465;</button>
+						} else {
+							<button class="small" data-on:click={ branchkit.MethodPost("model/set", ui.Args("name", m.Name)) }>Choose</button>
+						}
+					</div>
+				</div>
+			}
+			for _, m := range data.Commands {
+				<div class="model-row setup-model" role="listitem">
+					<div class="grow">
+						<div class="model-title">{ "Commands · " + m.Size }</div>
+						<div class="model-desc">
+							{ m.Bytes } · { m.Languages } · { m.Note }
+						</div>
+					</div>
+					<div class="model-actions">
+						if m.InUse {
+							<span class="badge badge-core">In use</span>
+						} else if m.Chosen && !m.Downloaded {
+							if data.OtherDownload != "" {
+								<button class="small primary" disabled aria-describedby="setup-other-download">Download</button>
+							} else if !data.Downloading {
+								<button class="small primary" data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", m.Ref)) }>Download</button>
+							}
+						} else if m.Downloaded {
+							<button class="small" data-on:click={ branchkit.MethodPost("command_model/set", ui.Args("name", m.Name)) }>Use</button>
+							<button class="icon-btn" title={ "Delete the " + m.Size + " command model" } aria-label={ "Delete the " + m.Size + " command model" }
+								data-on:click={ branchkit.MethodPost("model/delete", ui.Args("ref", m.Ref)) }>&#128465;</button>
+						} else {
+							<button class="small" data-on:click={ branchkit.MethodPost("command_model/set", ui.Args("name", m.Name)) }>Choose</button>
+						}
+					</div>
+				</div>
+			}
+		</div>
+	</div>
+}
+
+// checkMark is one check's state mark: a tick, a warning, or an empty
+// ring while it has not been tried.
+templ checkMark(result string) {
+	if result == "pass" {
+		<span class="check-mark pass" aria-hidden="true">
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+		</span>
+		<span class="sr-only">Works.</span>
+	} else if result == "fail" {
+		<span class="check-mark fail" aria-hidden="true">
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg>
+		</span>
+		<span class="sr-only">Needs you.</span>
+	} else {
+		<span class="check-mark" aria-hidden="true"></span>
+		<span class="sr-only">Not tried yet.</span>
+	}
+}
+
+// SetupTry is the "Try it" health check. Text that sits next to keycaps
+// is written as string expressions: templ trims the whitespace at the edge
+// of literal text, which once printed "⌥Gand".
+templ SetupTry(data SetupTryViewData) {
+	<div class="setup-tab setup-try">
+		<p class="model-section-note">
+			if data.Done() {
+				Everything works on this computer. These ticks stay; a hold that comes back silent opens this step again.
+			} else {
+				Three quick checks that BranchKit ticks by itself. Nothing you say leaves this computer.
+			}
+		</p>
+		<ol class="setup-checks">
+			<li class="setup-check">
+				@checkMark(data.Mic)
+				<div class="grow">
+					<div class="check-title">Microphone</div>
+					if data.Mic == "fail" {
+						<p class="check-note fail" role="status">{ data.MicNote }</p>
+					} else if data.Mic == "pass" {
+						<div class="check-desc">BranchKit hears sound from your microphone.</div>
+					} else {
+						<div class="check-desc">Ticks the first time BranchKit hears you, in either check below.</div>
+					}
+				</div>
+			</li>
+			<li class="setup-check">
+				@checkMark(data.Dictation)
+				<div class="grow">
+					<div class="check-title">Dictation</div>
+					<div class="check-desc">
+						{ "Click in the box, hold " }
+						@keys(data.DictateKeys)
+						{ ", say a sentence, then let go. Your words appear in the box." }
+					</div>
+					<textarea class="setup-practice" rows="2" aria-label="Practice box" placeholder="Your words appear here"></textarea>
+					if data.Linux {
+						<p class="check-desc">
+							The first time BranchKit types for you, your desktop may ask in a window titled <q>Remote Desktop</q>. Turn on Allow Remote Interaction, then choose Share.
+						</p>
+					}
+				</div>
+			</li>
+			<li class="setup-check">
+				@checkMark(data.Commands)
+				<div class="grow">
+					<div class="check-title">Commands</div>
+					if data.Commands == "pass" {
+						<div class="check-desc">BranchKit heard a command and knew what it meant.</div>
+					} else if !data.CommandsOnDisk {
+						<div class="check-desc">Download the command model above first.</div>
+					} else if data.Listening {
+						<div class="check-desc" role="status">
+							{ "Listening. Hold " }
+							@keys(data.CommandKeys)
+							{ " and say " }<q>{ data.Phrase }</q>{ ". BranchKit checks that it understood, without running it." }
+						</div>
+						if data.Heard != "" {
+							<p class="check-note">
+								{ "Heard " }<q>{ data.Heard }</q>{ " — not quite. Try again." }
+							</p>
+						}
+					} else {
+						<div class="check-desc">
+							{ "Press Check, then hold " }
+							@keys(data.CommandKeys)
+							{ " and say " }<q>{ data.Phrase }</q>{ ". BranchKit checks that it understood, without running it." }
+						</div>
+						<div>
+							<button class="small primary" data-on:click={ branchkit.MethodPost("setup/check", "") }>Check</button>
+						</div>
+					}
+				</div>
+			</li>
+		</ol>
+	</div>
+}

@@ -1,0 +1,98 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "github.com/branchkit/plugin-sdk-go/ui"
+import "fmt"
+import "strings"
+
+// Codeword candidates card — codeword-lab harness results merged with the
+// candidate ledger. Rendered under the alphabet table on the Phonetics tab
+// when at least one report exists. Adopt rewires the letter's codeword
+// through the same path as the edit box; Reject records the word + reason in
+// the ledger so it is never proposed again.
+
+templ Candidates(slots []CandidateSlotView) {
+	<bk-table id="candidates-card" columns="1fr 2fr 100px 100px" narrow="compress" compact-columns="minmax(0, 1fr) 40px minmax(0, 1.4fr) 76px">
+		<div id="candidates-header" class="table-header">
+			<div>Candidate</div>
+			<div><span data-wide>Engine verdict</span></div>
+			<div>Sounds like</div>
+			<div class="align-right">Decision</div>
+		</div>
+		for _, slot := range slots {
+			<div id={ fmt.Sprintf("cand-slot-%s", slot.Slot) } class="settings-row cand-slot">
+				<div class="label cand-slot-label">
+					if slot.Letter != "" {
+						<strong>{ slot.Letter }</strong>
+						if slot.Current != "" {
+							&nbsp;— current codeword "{ slot.Current }"
+						}
+					} else {
+						<strong>{ slot.Slot }</strong>
+					}
+					if slot.When != "" {
+						&nbsp;· tested { slot.When }
+					}
+				</div>
+			</div>
+			for _, row := range slot.Rows {
+				<div id={ fmt.Sprintf("cand-row-%s-%s", row.Slot, row.Word) } class="settings-row">
+					<div class="value">{ row.Word }</div>
+					<div>
+						if !row.HistoryOnly {
+							<span data-wide class={ "score-tag " + row.VerdictClass } title={ "per-rendition decodes: " + row.Marks }>{ row.Verdict }</span>
+							if strings.HasPrefix(row.Verdict, "pass") {
+								<span data-compact class={ "score-tag " + row.VerdictClass } title={ row.Verdict }>&#10003;{ strings.TrimPrefix(row.Verdict, "pass") }</span>
+							} else {
+								<span data-compact class={ "score-tag " + row.VerdictClass } title={ row.Verdict }>&#10005;</span>
+							}
+						}
+						if row.Confusers != "" {
+							<span data-wide class="hint-text cand-confusers" title="wrong decodes observed">heard as: { row.Confusers }</span>
+						}
+					</div>
+					<div class="hint-text">{ row.Nearest }</div>
+					<div class="row-actions">
+						if row.Status != "" {
+							<span class="badge badge-user" title={ row.Reason }>{ row.Status }</span>
+							<button
+								class="icon-btn"
+								title="Clear this decision"
+								data-on:click={ branchkit.MethodPost("candidates/decide", ui.Args("slot", row.Slot, "word", row.Word, "decision", "clear")) }
+							>&#8634;</button>
+						} else if !row.HistoryOnly {
+							<div data-show={ "$rejectingCand !== " + ui.JS(row.Slot+":"+row.Word) }>
+								<button
+									class="icon-btn"
+									title="Adopt — set as the live codeword"
+									data-on:click={ branchkit.MethodPost("candidates/decide", ui.Args("slot", row.Slot, "word", row.Word, "decision", "adopt")) }
+								>&#10003;</button>
+								<button
+									class="icon-btn"
+									title="Reject with a reason"
+									data-on:click={ "$rejectingCand = " + ui.JS(row.Slot+":"+row.Word) }
+								>&#10005;</button>
+							</div>
+							<div data-show={ "$rejectingCand === " + ui.JS(row.Slot+":"+row.Word) }>
+								<div class="edit-inline">
+									<input
+										type="text"
+										id={ fmt.Sprintf("cand-reason-%s-%s", row.Slot, row.Word) }
+										placeholder="why not?"
+										data-on:keydown={ "evt.key === 'Enter' && (" + branchkit.MethodPost("candidates/decide", ui.Args("slot", row.Slot, "word", row.Word, "decision", "reject", "reason", ui.Expr("el.value"))) + ", $rejectingCand = ''); evt.key === 'Escape' && ($rejectingCand = '')" }
+									/>
+									<button
+										class="edit-save"
+										title="Record rejection (Enter)"
+										data-on:click={ branchkit.MethodPost("candidates/decide", ui.Args("slot", row.Slot, "word", row.Word, "decision", "reject", "reason", ui.Expr("el.previousElementSibling.value"))) + "; $rejectingCand = ''" }
+									>&#10003;</button>
+									<button class="edit-cancel" title="Cancel (Esc)" data-on:click="$rejectingCand = ''">&#10005;</button>
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+			}
+		}
+	</bk-table>
+}

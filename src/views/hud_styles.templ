@@ -1,0 +1,99 @@
+package views
+
+// HudStyles renders voice's own HUD rules, on top of the platform's HUD kit
+// (every HUD page carries it: dark tokens, fonts, .bk-* components). What is
+// here is only what the kit does not know: voice's row anatomy, its tags,
+// and the person's Font size and Compact settings. Everything takes its
+// values from the kit's tokens, so voice looks like the rest of BranchKit.
+// Templ generates single-line output, so this is SSE-safe (multi-line
+// content breaks Datastar's data: line parsing).
+templ HudStyles() {
+	<style>
+		::-webkit-scrollbar { width: 0; height: 0; display: none; }
+		* { scrollbar-width: none; }
+		/* No panel: the window is the panel (the shell draws the frost,
+		   corners and shadow) and #content belongs to the page's layout. */
+		.hud-item {
+			padding: 7px 10px;
+			display: flex;
+			align-items: center;
+			gap: 9px;
+			border-radius: var(--hud-r-row);
+			width: 100%;
+			box-sizing: border-box;
+		}
+		.hud-item-text {
+			font-size: var(--hud-t-body);
+			font-weight: 450;
+			flex-grow: 1;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		/* Prose subtitles (command descriptions): same line as the title,
+		   right-aligned, quiet, ellipsized — ONE row anatomy with the keycap
+		   rows (field 2026-08-02). */
+		.hud-item-note {
+			margin-left: auto;
+			flex-shrink: 1;
+			min-width: 0;
+			max-width: 62%;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			text-align: right;
+			font-size: var(--hud-t-small);
+			color: var(--hud-ink-3);
+		}
+		/* Subtitle (e.g. a hint's letter) as a keycap, like the kit's. */
+		.hud-item-subtitle {
+			margin-left: auto;
+			flex-shrink: 0;
+			min-width: 20px;
+			box-sizing: border-box;
+			text-align: center;
+			padding: 1px 6px;
+			font-size: var(--hud-t-small);
+			color: var(--hud-ink-2);
+			background: var(--hud-fill);
+			border: 0.5px solid var(--hud-fill-2);
+			border-radius: var(--hud-r-key);
+		}
+		/* Tag (the collection label, e.g. "Badge") as a neutral chip. Tier
+		   tags keep a colour, and their word, so OK/MISS never rely on colour
+		   alone. */
+		.hud-tag {
+			padding: 2px 7px;
+			border-radius: var(--hud-r-key);
+			font-weight: 700;
+			flex-shrink: 0;
+			font-size: var(--hud-t-small);
+			letter-spacing: 0.02em;
+			background: var(--hud-fill-2);
+			color: var(--hud-ink-2);
+		}
+		.hud-tag.tier-core { color: var(--hud-accent); }
+		.hud-tag.tier-plugin, .hud-tag.tier-ok { color: var(--hud-ok); }
+		.hud-tag.tier-user { color: var(--hud-var); }
+		.hud-tag.tier-miss { color: var(--hud-bad); }
+		.item-var .hud-item-text {
+			color: var(--hud-var);
+			font-style: italic;
+		}
+		.hud-category { margin: 0; padding: 0; }
+		.category-header {
+			margin: 0;
+			font-size: var(--hud-t-small);
+			font-weight: 600;
+			color: var(--hud-ink-4);
+			letter-spacing: 0.02em;
+			padding: 6px 10px 3px;
+		}
+		.category-items { list-style: none; margin: 0; padding: 0; }
+		/* Text size is the platform's (Settings > Effects): the kit's tokens
+		   already scale, so nothing here sets a size of its own. */
+		/* Compact mode: tighter rows, same type. */
+		.hud-compact .hud-item { padding: 4px 8px; }
+		.hud-compact .category-header { padding: 4px 8px 2px; }
+	</style>
+}

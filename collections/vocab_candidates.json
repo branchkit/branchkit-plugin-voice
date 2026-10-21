@@ -1,0 +1,31 @@
+{
+  "preset": "data",
+  "id_strategy": {
+    "type": "by_field",
+    "field": "id"
+  },
+  "writers": "introducer_only",
+  "description": "Vocabulary candidate ledger — one record per (slot, word) the user has decided on: adopted, rejected (with reason), or retired (superseded). Decisions about WORDS, distinct from calibration dispositions (ground truth about utterances). Candidates come from codeword-lab harness reports; a rejected word is never re-proposed.",
+  "fields": [
+    {
+      "key": "slot",
+      "field_type": "string",
+      "label": "Slot"
+    },
+    {
+      "key": "word",
+      "field_type": "string",
+      "label": "Word"
+    },
+    {
+      "key": "status",
+      "field_type": "string",
+      "label": "Status"
+    },
+    {
+      "key": "reason",
+      "field_type": "string",
+      "label": "Reason"
+    }
+  ]
+}

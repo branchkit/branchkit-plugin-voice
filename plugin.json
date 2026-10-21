@@ -1,0 +1,1286 @@
+{
+  "$schema": "https://branchkit.com/schemas/manifest.json",
+  "id": "voice",
+  "name": "Voice",
+  "icon": "mic",
+  "icon_color": "red",
+  "requires": {
+    "privileges": [
+      "input",
+      "dispatch",
+      "microphone",
+      "events.speech",
+      "questions.answer",
+      "system.indicator",
+      "notifications",
+      "audio",
+      "stage.neural_engine",
+      "stage.gpu",
+      "text.caret",
+      "text.selection"
+    ],
+    "capabilities": {
+      "uses": [
+        "hud.show",
+        "indicator.set",
+        "native.notify",
+        "native.status_indicator"
+      ]
+    }
+  },
+  "version": "1.0.0",
+  "min_api_version": "0.2.0",
+  "description": "Core voice commands, phonetic alphabet, calibration, dictation timing.",
+  "author": "BranchKit",
+  "publisher": "github:branchkit",
+  "provides": {
+    "collections": {
+      "voice_commands": {
+        "preset": "command_set",
+        "description": "Voice command definitions contributed by all plugins."
+      },
+      "alphabet": {
+        "id_strategy": {
+          "type": "by_field",
+          "field": "letter"
+        },
+        "preset": "named_entities",
+        "fields": [
+          {
+            "key": "codeword",
+            "field_type": "string",
+            "label": "Codeword",
+            "required": true
+          },
+          {
+            "key": "letter",
+            "field_type": "string",
+            "label": "Letter",
+            "required": true
+          }
+        ],
+        "feeds_matching": {
+          "type": "as_named_entities",
+          "key_field": "codeword",
+          "value_field": "letter"
+        },
+        "description": "Phonetic codewords and their assigned keys."
+      },
+      "number": {
+        "id_strategy": {
+          "type": "by_field",
+          "field": "key"
+        },
+        "preset": "named_entities",
+        "fields": [
+          {
+            "key": "spoken",
+            "field_type": "string",
+            "label": "Spoken word"
+          },
+          {
+            "key": "key",
+            "field_type": "string",
+            "label": "Value"
+          },
+          {
+            "key": "aliases",
+            "field_type": "string[]",
+            "label": "Aliases"
+          }
+        ],
+        "feeds_matching": {
+          "type": "as_named_entities",
+          "key_field": "spoken",
+          "value_field": "key",
+          "aliases_field": "aliases"
+        },
+        "description": "Spoken numbers (zero through ten)"
+      },
+      "direction": {
+        "id_strategy": {
+          "type": "by_field",
+          "field": "key"
+        },
+        "preset": "named_entities",
+        "fields": [
+          {
+            "key": "spoken",
+            "field_type": "string",
+            "label": "Spoken word"
+          },
+          {
+            "key": "key",
+            "field_type": "string",
+            "label": "Direction"
+          },
+          {
+            "key": "aliases",
+            "field_type": "string[]",
+            "label": "Aliases"
+          }
+        ],
+        "feeds_matching": {
+          "type": "as_named_entities",
+          "key_field": "spoken",
+          "value_field": "key",
+          "aliases_field": "aliases"
+        },
+        "description": "Directional words (up, down, left, right...)"
+      },
+      "plugin.voice.floatable_collections": {
+        "id_strategy": {
+          "type": "by_field",
+          "field": "spoken"
+        },
+        "preset": "named_entities",
+        "writers": "introducer_only",
+        "fields": [
+          {
+            "key": "spoken",
+            "field_type": "string",
+            "label": "Spoken name"
+          },
+          {
+            "key": "collection",
+            "field_type": "string",
+            "label": "Collection id"
+          }
+        ],
+        "feeds_matching": {
+          "type": "as_named_entities",
+          "key_field": "spoken",
+          "value_field": "collection"
+        },
+        "description": "Collections that can be floated as a reference card. Derived from the live entity collections at startup."
+      },
+      "plugin.voice.open_app": {
+        "preset": "tag",
+        "writers": "platform_only",
+        "merge": "collect",
+        "fields": [],
+        "lifecycle": {
+          "type": "clear_on_event",
+          "events": [
+            "_platform.input.session_boundary"
+          ]
+        },
+        "clear_on_unrelated_command": true,
+        "exclusive": true,
+        "feeds_matching": {
+          "type": "as_gates",
+          "scoped": true
+        },
+        "description": "Open-app picker — say an app name to switch to it."
+      },
+      "plugin.voice.collection_picker": {
+        "preset": "tag",
+        "writers": "platform_only",
+        "merge": "collect",
+        "fields": [],
+        "lifecycle": {
+          "type": "clear_on_event",
+          "events": [
+            "_platform.input.session_boundary"
+          ]
+        },
+        "clear_on_unrelated_command": true,
+        "exclusive": true,
+        "feeds_matching": {
+          "type": "as_gates",
+          "scoped": true
+        },
+        "description": "Open-collection picker — say a collection name to float it as a reference card."
+      },
+      "plugin.voice.key_mode": {
+        "preset": "tag",
+        "writers": "platform_only",
+        "merge": "collect",
+        "fields": [],
+        "lifecycle": {
+          "type": "clear_on_event",
+          "events": [
+            "_platform.input.session_boundary"
+          ]
+        },
+        "clear_on_unrelated_command": true,
+        "exclusive": true,
+        "feeds_matching": {
+          "type": "as_gates",
+          "scoped": true
+        },
+        "description": "Key-press mode — bare key names press keys with no prefix. Entered by 'key'; exits on release or 'over'."
+      },
+      "plugin.voice.mode": {
+        "preset": "tag",
+        "held_by_writer": false,
+        "escape_exempt": true,
+        "fields": [
+          {
+            "key": "name",
+            "field_type": "string",
+            "required": true
+          }
+        ],
+        "feeds_matching": {
+          "type": "as_gates",
+          "name_field": "name"
+        },
+        "description": "Current voice input mode (idle, command hold, continuous, spelling)."
+      },
+      "plugin.voice.speaking": {
+        "preset": "tag",
+        "label": "Dictation is active",
+        "fields": [],
+        "description": "Active dictation session — text is being spoken for insertion."
+      },
+      "plugin.voice.tie_choices": {
+        "id_strategy": {
+          "type": "by_field",
+          "field": "codeword"
+        },
+        "preset": "named_entities",
+        "writers": "introducer_only",
+        "fields": [
+          {
+            "key": "codeword",
+            "field_type": "string",
+            "label": "Codeword"
+          },
+          {
+            "key": "pick",
+            "field_type": "string",
+            "label": "Choice value"
+          },
+          {
+            "key": "aliases",
+            "field_type": "string[]",
+            "label": "Aliases"
+          }
+        ],
+        "lifecycle": {
+          "type": "clear_on_event",
+          "events": [
+            "_platform.input.session_boundary"
+          ]
+        },
+        "feeds_matching": {
+          "type": "as_named_entities",
+          "key_field": "codeword",
+          "value_field": "pick",
+          "aliases_field": "aliases"
+        },
+        "description": "Transient per-utterance disambiguation choices. Populated only while the user is choosing among tied commands; each entry maps a spoken codeword (and the candidate's app-name aliases) to a choice value. Cleared at the end of each input session."
+      },
+      "plugin.voice.disambiguating": {
+        "preset": "tag",
+        "writers": "introducer_only",
+        "fields": [],
+        "lifecycle": {
+          "type": "clear_on_event",
+          "events": [
+            "_platform.input.session_boundary"
+          ]
+        },
+        "exclusive": true,
+        "feeds_matching": {
+          "type": "as_gates",
+          "scoped": true
+        },
+        "description": "Active command-tie disambiguation — the user is choosing among tied commands. Scoped + exclusive so only the transient choice grammar is live while it's set."
+      },
+      "plugin.voice.config": {
+        "preset": "settings",
+        "label": "Voice",
+        "description": "Dictation and calibration settings. Defaults live here; only your changes are stored.",
+        "fields": [
+          {
+            "key": "model",
+            "label": "Dictation model",
+            "description": "The Whisper model used for dictation. Change it on Get started, which shows what is downloaded.",
+            "field_type": "string",
+            "default": "openai_whisper-large-v3-v20240930"
+          },
+          {
+            "key": "command_model",
+            "label": "Command model",
+            "description": "The model that hears voice commands: sherpa-offline-nemo (standard, most accurate) or sherpa-nemo-small (light: smaller and faster). Change it on Get started.",
+            "field_type": "string",
+            "default": "sherpa-offline-nemo"
+          },
+          {
+            "key": "language",
+            "label": "Dictation language",
+            "description": "Language Whisper transcribes into.",
+            "field_type": "string",
+            "default": "en"
+          },
+          {
+            "key": "command_language",
+            "label": "Command language",
+            "description": "Language the command engine listens for.",
+            "field_type": "string",
+            "default": "en-US"
+          },
+          {
+            "key": "fix_all_caps",
+            "label": "Fix ALL-CAPS dictation",
+            "description": "Auto-correct when Whisper outputs entirely in UPPERCASE.",
+            "field_type": "boolean",
+            "default": true
+          },
+          {
+            "key": "refine_dictation",
+            "label": "Clean up with a local model",
+            "description": "After a dictation, a language model on this computer removes false starts and self-corrections (\"Tuesday, no, Wednesday\" becomes \"Wednesday\"). Off by default: it adds a second or two, needs a 1.1 GB download, and its edits are only kept when they remove words, never when they add them. Say \"type original\" to get the unedited text back.",
+            "field_type": "boolean",
+            "default": false
+          },
+          {
+            "key": "input_device",
+            "label": "Microphone",
+            "description": "The input device BranchKit listens through, for dictation and voice commands. Empty means the system default. Set from the Dictation tab.",
+            "field_type": "string",
+            "default": ""
+          },
+          {
+            "key": "input_device_name",
+            "label": "Microphone name",
+            "description": "The chosen microphone's name, kept so it can be shown and matched while it is not connected.",
+            "field_type": "string",
+            "default": ""
+          },
+          {
+            "key": "dictation_sounds",
+            "label": "Start and stop sounds",
+            "description": "A short sound when dictation starts listening and when it stops, so you know without looking.",
+            "field_type": "boolean",
+            "default": false
+          },
+          {
+            "key": "dictation_enabled",
+            "label": "Dictation",
+            "description": "Hold Option+T to dictate. Off means the dictation pipeline never starts.",
+            "field_type": "boolean",
+            "default": true
+          },
+          {
+            "key": "voice_commands_enabled",
+            "label": "Voice commands",
+            "description": "Hold Option+G to speak commands. Off means the command engine never starts.",
+            "field_type": "boolean",
+            "default": true
+          },
+          {
+            "key": "calibration_capture",
+            "label": "Capture calibration audio",
+            "description": "While you calibrate, record your voice on-device to learn which words are hardest to recognize for you.",
+            "field_type": "boolean",
+            "default": true
+          },
+          {
+            "key": "capture_retention",
+            "label": "Calibration audio retention",
+            "description": "How long calibration recordings are kept on disk, independent of whether they are ever analyzed.",
+            "field_type": "enum",
+            "enum_values": [
+              "delete_after_analysis",
+              "keep_bounded",
+              "keep_all"
+            ],
+            "default": "keep_bounded"
+          },
+          {
+            "key": "calibration_auto_advance",
+            "label": "Auto-advance calibration",
+            "description": "Move to the next calibration target as soon as the current one is heard correctly, with no Next click.",
+            "field_type": "boolean",
+            "default": false
+          },
+          {
+            "key": "command_confidence_gate",
+            "label": "Command confidence gate",
+            "description": "What happens when a command's least certain word falls below the floor. Shadow only marks it in History and the log, so you can see what the gate would do; Enforce drops it instead of running it.",
+            "field_type": "enum",
+            "enum_values": ["off", "shadow", "enforce"],
+            "default": "shadow"
+          },
+          {
+            "key": "command_confidence_floor",
+            "label": "Command confidence floor",
+            "description": "The margin a command's least certain word must reach. Lower lets more through.",
+            "field_type": "number",
+            "default": -6
+          }
+        ]
+      },
+      "plugin.voice.app_profiles": {
+        "preset": "data",
+        "cardinality": "singleton",
+        "id_strategy": {
+          "type": "singleton"
+        },
+        "writers": "introducer_only",
+        "description": "Per-app dictation profile overrides. Only your changes are stored; the shipped app table lives in the plugin so later releases can correct it."
+      },
+      "plugin.voice.app_styles": {
+        "preset": "data",
+        "cardinality": "singleton",
+        "id_strategy": {
+          "type": "singleton"
+        },
+        "writers": "introducer_only",
+        "description": "Your dictation styles: the default for every app, and the apps that are exceptions to it (a style of their own, or none)."
+      },
+      "plugin.voice.corrections": {
+        "preset": "data",
+        "cardinality": "singleton",
+        "id_strategy": {
+          "type": "singleton"
+        },
+        "writers": "introducer_only",
+        "description": "User-defined text correction rules for dictation post-processing."
+      },
+      "plugin.voice.dictation_vocabulary": {
+        "preset": "data",
+        "cardinality": "singleton",
+        "id_strategy": {
+          "type": "singleton"
+        },
+        "writers": "introducer_only",
+        "description": "Words you use that dictation should spell your way: names, products, jargon. Biases the dictation decoder toward them; rewrites nothing."
+      },
+      "plugin.voice.hud_config": {
+        "preset": "settings",
+        "label": "HUD",
+        "description": "HUD appearance settings. Defaults live here; only your changes are stored.",
+        "fields": [
+          {
+            "key": "font_size",
+            "label": "Font size",
+            "field_type": "enum",
+            "enum_values": [
+              "small",
+              "default",
+              "large"
+            ],
+            "default": "default"
+          },
+          {
+            "key": "show_badges",
+            "label": "Show badges",
+            "field_type": "boolean",
+            "default": true
+          },
+          {
+            "key": "compact_mode",
+            "label": "Compact mode",
+            "field_type": "boolean",
+            "default": false
+          },
+          {
+            "key": "opacity",
+            "label": "Opacity",
+            "field_type": "number",
+            "default": 98
+          },
+          {
+            "key": "blur_amount",
+            "label": "Blur",
+            "field_type": "int",
+            "default": 40
+          },
+          {
+            "key": "corner_radius",
+            "label": "Corner radius",
+            "field_type": "int",
+            "default": 20
+          },
+          {
+            "key": "disabled_channels",
+            "label": "Disabled channels",
+            "field_type": "object",
+            "fields": [
+              {
+                "key": "main",
+                "label": "Main disabled",
+                "field_type": "boolean",
+                "default": false
+              },
+              {
+                "key": "discovery",
+                "label": "Discovery disabled",
+                "field_type": "boolean",
+                "default": false
+              },
+              {
+                "key": "notification",
+                "label": "Notification disabled",
+                "field_type": "boolean",
+                "default": false
+              }
+            ]
+          }
+        ]
+      },
+      "plugin.voice.recognition_log": "collections/recognition_log.json",
+      "plugin.voice.verification_attempts": "collections/verification_attempts.json",
+      "plugin.voice.verification_sessions": "collections/verification_sessions.json",
+      "plugin.voice.clip_fragility": "collections/clip_fragility.json",
+      "plugin.voice.vocab_candidates": "collections/vocab_candidates.json",
+      "plugin.voice.clip_bias_score": "collections/clip_bias_score.json"
+    },
+    "stages": {
+      "vad_gate": {
+        "stage_type": "vad_gate",
+        "binary": "vad_gate"
+      },
+      "sherpa_commands": {
+        "stage_type": "command_recognition",
+        "binary": "sherpa_commands"
+      },
+      "whisperkit_stt": {
+        "stage_type": "stt",
+        "binary": "whisperkit_stage",
+        "platform": "macos"
+      },
+      "refine_llm": {
+        "stage_type": "request",
+        "binary": "refine_llm"
+      },
+      "whisper_stt": {
+        "stage_type": "stt",
+        "binary": "whisper_stage",
+        "platform": [
+          "linux",
+          "windows"
+        ]
+      }
+    },
+    "artifacts": {
+      "sherpa-offline-nemo": {
+        "description": "Offline command recognition (NeMo FastConformer-CTC large, English)",
+        "size_bytes": 183525625,
+        "parts": [
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/branchkit/nemo-ctc-en-fastconformer-large-onnx/resolve/eeb9b6a4bde3efd01f18f131feb9e91e46994c5b/model.int8.onnx",
+            "sha256": "2aa898d35e40e58a42d8a3803e71635d14fa44c3be698ba487d1be66f27a5ec6",
+            "dest": "model.onnx"
+          },
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/branchkit/nemo-ctc-en-fastconformer-large-onnx/resolve/eeb9b6a4bde3efd01f18f131feb9e91e46994c5b/tokens.txt",
+            "sha256": "618dc110fc2213886b52e063ff42329bbdf37a266ca7705184090fa5f39f3131",
+            "dest": "tokens.txt"
+          },
+          {
+            "kind": "http_file",
+            "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+            "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+            "dest": "silero_vad.onnx"
+          },
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/branchkit/nemo-ctc-en-fastconformer-large-onnx/resolve/eeb9b6a4bde3efd01f18f131feb9e91e46994c5b/bpe.model",
+            "sha256": "6fdbb245a2b0020c7466e1f2b2913fe5bc282a6981c78f2366b6662ed0905f6d",
+            "dest": "bpe.model"
+          },
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/branchkit/nemo-ctc-en-fastconformer-large-onnx/resolve/eeb9b6a4bde3efd01f18f131feb9e91e46994c5b/bpe.vocab",
+            "sha256": "613cf3286f45b8f6ecde0666e5f75b710e5fcd0259de842108a2f615fef67327",
+            "dest": "bpe.vocab"
+          }
+        ],
+        "requires": [
+          "model.onnx",
+          "tokens.txt",
+          "silero_vad.onnx",
+          "bpe.model",
+          "bpe.vocab"
+        ]
+      },
+      "sherpa-nemo-small": {
+        "description": "Offline command recognition, light (NeMo Conformer-CTC small, English)",
+        "size_bytes": 61079153,
+        "parts": [
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/branchkit/nemo-ctc-en-conformer-small-onnx/resolve/4b77ce39fd7da7f1c6ea3418f97c20a4306b2145/model.onnx",
+            "sha256": "1088fc73ce8bd7dc39ccd72e36693bb574c47959fb5b60c930596f9daa255fbb",
+            "dest": "model.onnx"
+          },
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/branchkit/nemo-ctc-en-conformer-small-onnx/resolve/4b77ce39fd7da7f1c6ea3418f97c20a4306b2145/tokens.txt",
+            "sha256": "1adce7866285e6a4aac6208b120d5b8e4302b7cae5f2ae541c343097773fd988",
+            "dest": "tokens.txt"
+          },
+          {
+            "kind": "http_file",
+            "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+            "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+            "dest": "silero_vad.onnx"
+          },
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/branchkit/nemo-ctc-en-conformer-small-onnx/resolve/4b77ce39fd7da7f1c6ea3418f97c20a4306b2145/bpe.model",
+            "sha256": "d9b04033136c5d0413047fe94d2f0ab6cb088d292014bb076ee1700bdac545a9",
+            "dest": "bpe.model"
+          },
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/branchkit/nemo-ctc-en-conformer-small-onnx/resolve/4b77ce39fd7da7f1c6ea3418f97c20a4306b2145/bpe.vocab",
+            "sha256": "13d12e8b0fce5ad809774f53ddefb949b0b367b7217ec2e9875d32570030a095",
+            "dest": "bpe.vocab"
+          }
+        ],
+        "requires": [
+          "model.onnx",
+          "tokens.txt",
+          "silero_vad.onnx",
+          "bpe.model",
+          "bpe.vocab"
+        ]
+      },
+      "openai_whisper-large-v3-v20240930": {
+        "description": "Dictation — most accurate (Whisper large-v3 turbo)",
+        "size_bytes": 1620000000,
+        "parts": [
+          {
+            "kind": "hf_folder",
+            "repo": "argmaxinc/whisperkit-coreml",
+            "path": "openai_whisper-large-v3-v20240930",
+            "revision": "97a5bf9bbc74c7d9c12c755d04dea59e672e3808"
+          },
+          {
+            "kind": "hf_files",
+            "repo": "openai/whisper-large-v3",
+            "revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
+            "files": [
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "config.json"
+            ],
+            "dest": "models/openai/whisper-large-v3"
+          }
+        ],
+        "requires": [
+          "AudioEncoder.mlmodelc",
+          "TextDecoder.mlmodelc",
+          "MelSpectrogram.mlmodelc",
+          "models/openai/whisper-large-v3/tokenizer.json"
+        ],
+        "platform": "macos"
+      },
+      "openai_whisper-small.en": {
+        "description": "Dictation — balanced quality and speed",
+        "size_bytes": 489000000,
+        "parts": [
+          {
+            "kind": "hf_folder",
+            "repo": "argmaxinc/whisperkit-coreml",
+            "path": "openai_whisper-small.en",
+            "revision": "97a5bf9bbc74c7d9c12c755d04dea59e672e3808"
+          },
+          {
+            "kind": "hf_files",
+            "repo": "openai/whisper-small.en",
+            "revision": "e8727524f962ee844a7319d92be39ac1bd25655a",
+            "files": [
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "config.json"
+            ],
+            "dest": "models/openai/whisper-small.en"
+          }
+        ],
+        "requires": [
+          "AudioEncoder.mlmodelc",
+          "TextDecoder.mlmodelc",
+          "MelSpectrogram.mlmodelc",
+          "models/openai/whisper-small.en/tokenizer.json"
+        ],
+        "platform": "macos"
+      },
+      "openai_whisper-base.en": {
+        "description": "Dictation — fast, lower accuracy",
+        "size_bytes": 70000000,
+        "parts": [
+          {
+            "kind": "hf_folder",
+            "repo": "argmaxinc/whisperkit-coreml",
+            "path": "openai_whisper-base.en",
+            "revision": "97a5bf9bbc74c7d9c12c755d04dea59e672e3808"
+          },
+          {
+            "kind": "hf_files",
+            "repo": "openai/whisper-base.en",
+            "revision": "911407f4214e0e1d82085af863093ec0b66f9cd6",
+            "files": [
+              "tokenizer.json",
+              "tokenizer_config.json",
+              "config.json"
+            ],
+            "dest": "models/openai/whisper-base.en"
+          }
+        ],
+        "requires": [
+          "AudioEncoder.mlmodelc",
+          "TextDecoder.mlmodelc",
+          "MelSpectrogram.mlmodelc",
+          "models/openai/whisper-base.en/tokenizer.json"
+        ],
+        "platform": "macos"
+      },
+      "whisper.cpp-base.en": {
+        "description": "Dictation on Linux and Windows (whisper.cpp, English) — fast, lower accuracy",
+        "size_bytes": 147964211,
+        "platform": [
+          "linux",
+          "windows"
+        ],
+        "parts": [
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
+            "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+            "dest": "ggml-base.en.bin"
+          }
+        ],
+        "requires": [
+          "ggml-base.en.bin"
+        ]
+      },
+      "whisper.cpp-small.en": {
+        "description": "Dictation on Linux and Windows (whisper.cpp, English) — balanced quality and speed",
+        "size_bytes": 487614201,
+        "platform": [
+          "linux",
+          "windows"
+        ],
+        "parts": [
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
+            "sha256": "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+            "dest": "ggml-small.en.bin"
+          }
+        ],
+        "requires": [
+          "ggml-small.en.bin"
+        ]
+      },
+      "qwen2.5-1.5b-instruct": {
+        "description": "Dictation clean-up (Qwen2.5 1.5B Instruct, llama.cpp) — removes false starts and self-corrections on this computer",
+        "size_bytes": 1117320736,
+        "parts": [
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+            "dest": "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+          }
+        ],
+        "requires": [
+          "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+        ]
+      },
+      "qwen3-4b": {
+        "description": "Dictation styles (Qwen3 4B, llama.cpp) — rewrites dictation as Casual, Formal or Email on this computer",
+        "size_bytes": 2497280256,
+        "parts": [
+          {
+            "kind": "http_file",
+            "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf",
+            "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+            "dest": "Qwen3-4B-Q4_K_M.gguf"
+          }
+        ],
+        "requires": [
+          "Qwen3-4B-Q4_K_M.gguf"
+        ]
+      }
+    }
+  },
+  "consumes": {
+    "writes": [
+      "_platform.input",
+      "_platform.pipelines"
+    ],
+    "effects": [
+      {
+        "asserts": [
+          "suppress_keybinds"
+        ],
+        "user_visible_name": "Key Capture",
+        "user_visible_description": "Pauses global hotkeys while the command editor records a keypress for an action, so the key you press is captured instead of triggering a command."
+      }
+    ],
+    "collections": [
+      {
+        "name": "_platform.input",
+        "fields": [
+          "source"
+        ]
+      },
+      {
+        "name": "_platform.pipelines",
+        "fields": [
+          "name",
+          "stages"
+        ]
+      },
+      {
+        "name": "alphabet",
+        "seeds": [
+          "_select_*"
+        ]
+      },
+      {
+        "name": "apps",
+        "fields": [
+          "spoken",
+          "app_id",
+          "name"
+        ]
+      },
+      {
+        "name": "app_traits",
+        "fields": [
+          "trait",
+          "app_id"
+        ]
+      },
+      {
+        "name": "audio_inputs",
+        "fields": [
+          "spoken"
+        ]
+      },
+      {
+        "name": "audio_outputs",
+        "fields": [
+          "spoken"
+        ]
+      },
+      {
+        "name": "plugin.browser.tabs",
+        "fields": [
+          "spoken",
+          "title"
+        ]
+      },
+      {
+        "name": "_platform.model_download"
+      },
+      {
+        "name": "_platform.bindings.active"
+      },
+      {
+        "name": "_platform.key_names",
+        "fields": [
+          "name",
+          "code"
+        ]
+      },
+      {
+        "name": "keys",
+        "fields": [
+          "spoken",
+          "key"
+        ]
+      },
+      {
+        "name": "modifiers",
+        "fields": [
+          "spoken",
+          "key"
+        ]
+      }
+    ],
+    "events": [
+      {
+        "pattern": "_platform.collection.updated"
+      },
+      {
+        "pattern": "_platform.app.focused"
+      },
+      {
+        "pattern": "_platform.pipeline.transcript"
+      },
+      {
+        "pattern": "_platform.pipeline.started"
+      },
+      {
+        "pattern": "_platform.pipeline.stopped"
+      },
+      {
+        "pattern": "_platform.pipeline.executed"
+      },
+      {
+        "pattern": "_platform.pipeline.warming"
+      },
+      {
+        "pattern": "_platform.pipeline.warmed"
+      },
+      {
+        "pattern": "_platform.permission.changed"
+      }
+    ]
+  },
+  "collection_data": {
+    "voice_commands": "commands.json",
+    "_platform.bindings": {
+      "opt+t DOWN": {
+        "action": "voice.dictation"
+      },
+      "opt+t UP": {
+        "action": "voice.dictation"
+      },
+      "escape DOWN": {
+        "action": "voice.dictation_cancel",
+        "while": [
+          "plugin.voice.mode.dictation"
+        ]
+      },
+      "opt+g DOWN": {
+        "action": "voice.command"
+      },
+      "opt+g UP": {
+        "action": "voice.command"
+      },
+      "opt+c": {
+        "action": "voice.continuous_toggle"
+      },
+      "opt+b": {
+        "action": "voice.help_toggle"
+      },
+      "opt+escape": {
+        "action": "connections.stop"
+      }
+    },
+    "_platform.pipelines": [
+      {
+        "name": "command_recognition",
+        "trigger": {
+          "type": "manual"
+        },
+        "cancel_delay_ms": 800,
+        "stages": [
+          {
+            "stage": "_platform.mic"
+          },
+          {
+            "stage": "voice.sherpa_commands",
+            "params": {
+              "model": "sherpa-offline-nemo",
+              "lifecycle_mode": "continuous",
+              "min-silence": "0.10",
+              "dynamic-grammar": "true"
+            }
+          }
+        ],
+        "command_collections": [
+          "voice_commands"
+        ],
+        "dispatch": "delegated"
+      },
+      {
+        "name": "dictation",
+        "trigger": {
+          "type": "manual"
+        },
+        "cancel_delay_ms": 60000,
+        "stop_tail_ms": 200,
+        "stages": [
+          {
+            "stage": "_platform.mic"
+          },
+          {
+            "stage": "_platform.stt",
+            "params": {
+              "model": "openai_whisper-large-v3-v20240930"
+            }
+          }
+        ],
+        "dispatch": "plugin"
+      },
+      {
+        "name": "dictation_sample",
+        "trigger": {
+          "type": "manual"
+        },
+        "cancel_delay_ms": 60000,
+        "stop_tail_ms": 200,
+        "stages": [
+          {
+            "stage": "_platform.mic"
+          },
+          {
+            "stage": "_platform.stt",
+            "params": {
+              "model": "openai_whisper-large-v3-v20240930"
+            }
+          }
+        ],
+        "dispatch": "plugin"
+      }
+    ]
+  },
+  "hud_cards": [
+    {
+      "channel": "voice.which",
+      "description": "Which command? The commands one phrase could mean, each beside a word to say"
+    },
+    {
+      "channel": "voice.blocked",
+      "description": "Why a command you said did nothing: this computer can't do it, or the action it runs is gone or changed"
+    }
+  ],
+  "hud_windows": [
+    {
+      "channel": "main",
+      "anchor": "top-right",
+      "width": 320,
+      "min_height": 100,
+      "accepts_input": true,
+      "follows_focus": false,
+      "description": "Command list overlay"
+    },
+    {
+      "channel": "discovery",
+      "anchor": "bottom-right",
+      "width": 400,
+      "min_height": 400,
+      "accepts_input": false,
+      "on_pointer": "fade",
+      "description": "Discovery/live transcript"
+    }
+  ],
+  "dev": {
+    "build": [
+      [
+        "templ",
+        "generate"
+      ],
+      [
+        "go",
+        "build",
+        "-ldflags=-s -w",
+        "-o",
+        "../voice-plugin",
+        "."
+      ]
+    ],
+    "build_dir": "src"
+  },
+  "run": "./voice-plugin",
+  "action_prefix": "voice",
+  "action_types": {
+    "dictation": {
+      "label": "Dictation",
+      "modes": [
+        "tap",
+        "hold"
+      ]
+    },
+    "command": {
+      "label": "Command Capture",
+      "modes": [
+        "tap",
+        "hold"
+      ]
+    },
+    "speak": {
+      "label": "Speak Dictation",
+      "modes": [
+        "tap",
+        "hold"
+      ]
+    },
+    "continuous_toggle": {
+      "label": "Toggle Continuous Mode",
+      "modes": [
+        "tap",
+        "toggle"
+      ]
+    },
+    "help_toggle": {
+      "label": "Toggle Help HUD",
+      "modes": [
+        "tap",
+        "toggle"
+      ]
+    },
+    "wake": {
+      "label": "Wake Continuous Listening"
+    },
+    "retype_last": {
+      "label": "Type Last Dictation Again",
+      "fields": [
+        {
+          "key": "form",
+          "label": "Form",
+          "field_type": "string",
+          "required": false,
+          "description": "Empty types it as it was typed (repaired and shaped). \"raw\" types what was heard, before corrections and the profile."
+        }
+      ]
+    },
+    "rewrite_selection": {
+      "label": "Rewrite Selected Text in a Style",
+      "fields": [
+        {
+          "key": "style",
+          "label": "Style",
+          "field_type": "string",
+          "required": true,
+          "description": "casual, formal or email: the dictation style to rewrite the selected text in, with the same model and the same checks that names and numbers survive."
+        }
+      ]
+    },
+    "dictation_cancel": {
+      "label": "Cancel Dictation"
+    },
+    "sleep": {
+      "label": "Sleep Continuous Listening"
+    },
+    "close_floats": {
+      "label": "Close Floating Cards"
+    },
+    "open_float": {
+      "label": "Float Collection Card",
+      "fields": [
+        {
+          "key": "collection",
+          "label": "Collection",
+          "field_type": "string",
+          "required": true
+        }
+      ]
+    },
+    "enter_picker": {
+      "label": "Enter Open Picker",
+      "fields": [
+        {
+          "key": "mode",
+          "label": "Picker",
+          "field_type": "string",
+          "required": false
+        }
+      ]
+    },
+    "repeat": {
+      "label": "Repeat Last Command",
+      "fields": [
+        {
+          "key": "count",
+          "label": "Repeat Count",
+          "placeholder": "1",
+          "field_type": "string",
+          "required": false
+        },
+        {
+          "key": "mode",
+          "label": "Mode",
+          "field_type": "string",
+          "required": false
+        }
+      ]
+    },
+    "pick_tie": {
+      "label": "Pick Tie-Break Choice",
+      "fields": [
+        {
+          "key": "choice",
+          "label": "Choice",
+          "field_type": "string",
+          "required": true
+        }
+      ]
+    }
+  },
+  "default_footer": "Say 'show commands' or press the help key (Option+B by default) to toggle",
+  "hud_targets": [
+    "commands",
+    "entities",
+    "selection",
+    "history",
+    "dictation"
+  ],
+  "implements": {
+    "pages": [
+      {
+        "label": "Get started",
+        "key": "start",
+        "reads": [
+          "_platform.model_info",
+          "_platform.model_download",
+          "_platform.bindings.active"
+        ]
+      },
+      {
+        "label": "Command Editor",
+        "key": "commands",
+        "layout": "workbench",
+        "reads": [
+          "voice_commands"
+        ]
+      },
+      {
+        "label": "Alphabet",
+        "key": "phonetics",
+        "reads": [
+          "voice_commands"
+        ]
+      },
+      {
+        "label": "Calibration",
+        "key": "calibration",
+        "reads": [
+          "voice_commands"
+        ]
+      },
+      {
+        "label": "Recordings",
+        "key": "recordings"
+      },
+      {
+        "label": "Dictation",
+        "key": "dictation",
+        "reads": [
+          "corrections",
+          "_platform.model_info",
+          "_platform.model_download",
+          "_platform.bindings.active"
+        ]
+      },
+      {
+        "label": "Models",
+        "key": "models",
+        "reads": [
+          "_platform.model_info",
+          "_platform.model_download",
+          "_platform.bindings.active"
+        ]
+      },
+      {
+        "label": "HUD",
+        "key": "hud"
+      }
+    ],
+    "setup_steps": [
+      {
+        "key": "start",
+        "label": "Get started",
+        "tab": "start",
+        "required": true
+      }
+    ],
+    "on_action": true,
+    "render_settings": true,
+    "on_commands_changed": true
+  }
+}

@@ -1,0 +1,385 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "github.com/branchkit/plugin-sdk-go/ui"
+import "fmt"
+
+// Dictation is the settings tab. It asks for what a person cares about —
+// which words it should know, what it wrote recently — and folds the machinery (rule table, ALL CAPS
+// repair) into Advanced. The microphone and the model are chosen on Get started.
+// Every section is a card of settings rows (label and description left, control right),
+// the HUD tab's shape; the how-to, sounds and microphone were loose text above the cards until
+// 2026-10-06.
+templ Dictation(data DictationViewData) {
+	<div class="dict-tab">
+		<bk-cards>
+		<bk-card label="Dictation" full>
+			<div class="dict-section-note">Runs on this computer. Nothing you say leaves it.</div>
+			<bk-table columns="minmax(0, 1fr) auto">
+				@settingRow("Hold to dictate", "Hold, talk, let go. Your words appear wherever you're typing.") {
+					@keys(data.DictateKeys)
+				}
+				@settingRow("Hands-free", "Double-tap to keep listening without holding the key; press it again to stop.") {
+					<span class="dict-row-hint">double-tap</span>
+					@keys(data.DictateKeys)
+				}
+				@settingRow("Start and stop sounds", "A short sound when dictation starts listening and when it stops, so you know without looking.") {
+					<bk-toggle
+						title="Start and stop sounds"
+						checked?={ data.Sounds }
+						data-on:change={ "@post('" + branchkit.MethodURL("config/update") + "', {payload: {dictation_sounds: evt.detail.checked}})" }
+					></bk-toggle>
+				}
+				@settingRow("Microphone", "Used for dictation and voice commands. Chosen on Get started.") {
+					<span class="dict-row-value">{ data.MicLabel }</span>
+					<a class="dict-row-value" href="/plugins/voice/settings/start" target="_top">Change</a>
+				}
+			</bk-table>
+		</bk-card>
+		<bk-card label="Clean-up and styles" full>
+			<div class="dict-section-note">What happens to your words after they are heard, on this computer. An app with a style uses it instead of clean-up. Say “type original” to undo either.</div>
+			<div class="dict-subhead">
+				<span class="dict-subhead-label">Clean-up</span>
+				<span class="grow"></span>
+				@modelStatus(data.RefineReady, data.RefineDownload, data.RefineRef, "1.1 GB", data.StylesReady)
+			</div>
+			if data.StylesReady && data.DefaultStyle != "" {
+				<div class="dict-section-note">With a default style, clean-up runs only in apps whose exception is None.</div>
+			}
+			if !data.RefineReady {
+				<div class="dict-section-note" id="dict-cleanup-needs-model">Download the clean-up model to turn clean-up on. Until then, dictation is typed as heard.</div>
+			}
+			<div class={ needsModelClass(data.RefineReady) }>
+				<bk-table columns="minmax(0, 1fr) auto">
+					@settingRow("Clean up with a local model", cleanUpDescription) {
+						<bk-toggle
+							title="Clean up with a local model"
+							checked?={ data.Refine && data.RefineReady }
+							disabled?={ !data.RefineReady }
+							if !data.RefineReady {
+								aria-describedby="dict-cleanup-needs-model"
+							}
+							data-on:change={ "@post('" + branchkit.MethodURL("config/update") + "', {payload: {refine_dictation: evt.detail.checked}})" }
+						></bk-toggle>
+					}
+				</bk-table>
+			</div>
+			<div class="dict-subhead">
+				<span class="dict-subhead-label">Styles</span>
+				<span class="grow"></span>
+				@modelStatus(data.StylesReady, data.StyleDownload, data.StyleRef, "2.5 GB", data.RefineReady)
+			</div>
+			if !data.StylesReady {
+				<div class="dict-section-note" id="dict-styles-needs-model">Download the style model to choose a style. Until then, every app gets your words as dictated.</div>
+			}
+			<div class={ needsModelClass(data.StylesReady) }>
+			<div class="dict-section-note">How dictation is written. A style rewrites what you said and keeps every name and number; if it can't, your words go in as dictated. Choose one for every app, then make exceptions for apps that should differ.</div>
+			<div class="dict-mini-head" id="dict-default-style">Default for every app</div>
+			<div class="dict-style-examples" role="group" aria-labelledby="dict-default-style">
+				@styleBox(data, "", "None", "Your words as dictated, cleaned up if clean-up is on.")
+				@styleBox(data, "correct", "Correct", "She doesn’t think the Q3 numbers are ready yet.")
+				@styleBox(data, "casual", "Casual", "can you send Priya the Q3 numbers before Thursday")
+				@styleBox(data, "formal", "Formal", "Can you send Priya the Q3 numbers before Thursday?")
+				@styleBox(data, "email", "Email", "Hi, / Can you send Priya the Q3 numbers before Thursday? / Thanks,")
+			</div>
+			<div class="dict-mini-head">Exceptions</div>
+			if len(data.StyleRows) == 0 {
+				<div class="dict-section-note">No exceptions: every app uses the default. Add an app below to give it a style of its own.</div>
+			}
+			<bk-table columns="minmax(0, 2fr) minmax(0, 3fr) auto">
+				for _, row := range data.StyleRows {
+					<div class="settings-row">
+						<div class="label">{ row.Name }</div>
+						<div class="value-cell" role="group" aria-label={ "Style in " + row.Name }>
+							for _, c := range RowStyleChoices {
+								if data.StylesReady {
+									<button
+										class={ StyleBtnClass(row.Style, c.ID) }
+										aria-pressed={ fmt.Sprint(row.Style == c.ID) }
+										data-on:click={ branchkit.MethodPost("app_styles/set", ui.Args("bundle_id", row.BundleID, "style", c.ID)) }
+									>{ c.Label }</button>
+								} else {
+									// No model: no style takes effect, so none shows as
+									// chosen, and no choice can be made.
+									<button
+										class={ StyleBtnClass("", c.ID) }
+										aria-pressed="false"
+										aria-disabled="true"
+										aria-describedby="dict-styles-needs-model"
+									>{ c.Label }</button>
+								}
+							}
+						</div>
+						<div class="row-actions">
+							if data.StylesReady {
+								<button class="icon-btn" title={ row.Name + " uses the default again" } aria-label={ row.Name + " uses the default again" }
+									data-on:click={ branchkit.MethodPost("app_styles/set", ui.Args("bundle_id", row.BundleID, "style", "")) }>&#10005;</button>
+							} else {
+								<button class="icon-btn" aria-label={ row.Name + " uses the default again" } aria-disabled="true" aria-describedby="dict-styles-needs-model">&#10005;</button>
+							}
+						</div>
+					</div>
+				}
+			</bk-table>
+			@addAppRow(data)
+			</div>
+		</bk-card>
+		<bk-card label="Words it should know" count={ fmt.Sprintf("%d", len(data.Words)) } full>
+			<div class="dict-section-note">Names, products and jargon. Dictation aims for these spellings while it listens. Fix a word in Recent and it lands here too.</div>
+			if len(data.Words) > 0 {
+				<ul class="dict-words">
+					for _, w := range data.Words {
+						<li class="dict-word">
+							<div class="dict-word-main">
+								<span class="dict-word-name">{ w.Word }</span>
+								if len(w.Fixes) > 0 || w.HasPattern {
+									<span class="dict-word-fixes">
+										for i, f := range w.Fixes {
+											if i == 0 {
+												{ "fixes " }
+											} else {
+												{ ", " }
+											}
+											<span class="dict-word-heard">{ f.Heard }</span>
+											<button class="icon-btn dict-fix-x" title={ "Stop fixing “" + f.Heard + "”" } aria-label={ "Stop fixing " + f.Heard }
+												data-on:click={ branchkit.MethodPost("corrections/delete", ui.Args("id", f.ID)) }>&#10005;</button>
+										}
+										if w.HasPattern {
+											if len(w.Fixes) > 0 {
+												{ " · " }
+											}
+											{ "also a pattern rule (Advanced)" }
+										}
+									</span>
+								}
+							</div>
+							<button class="icon-btn" title={ "Forget " + w.Word } aria-label={ "Forget " + w.Word }
+								data-on:click={ branchkit.MethodPost("vocabulary/remove", ui.Args("word", w.Word)) }>&#10005;</button>
+						</li>
+					}
+				</ul>
+			}
+			<div class="dict-test-row" data-signals:vocab-input__ifmissing="''">
+				<input type="text" placeholder="Add a word, or several separated by commas" aria-label="Add a word" data-bind="vocabInput"
+					class="dict-test-input"
+					data-on:keydown={ "evt.key === 'Enter' && (" + branchkit.MethodPost("vocabulary/add", ui.Args("text", ui.Expr("$vocabInput"))) + ", $vocabInput = '')" }/>
+				<button class="small"
+					data-on:click={ branchkit.MethodPost("vocabulary/add", ui.Args("text", ui.Expr("$vocabInput"))) + "; $vocabInput = ''" }>Add</button>
+			</div>
+		</bk-card>
+		<bk-card label="Recent" full>
+			@templ.Raw(data.RecentHTML)
+		</bk-card>
+		</bk-cards>
+		<details class="dict-advanced" data-preserve-attr="open">
+			<summary>Advanced: pattern rules, ALL CAPS repair</summary>
+			<div class="dict-advanced-body">
+				<bk-toggle
+					label="Fix All Caps"
+					description="Auto-correct when Whisper outputs entirely in UPPERCASE"
+					checked?={ data.FixAllCaps }
+					data-on:change={ "@post('" + branchkit.MethodURL("config/update") + "', {payload: {fix_all_caps: evt.detail.checked}})" }
+				></bk-toggle>
+				<h3 class="dict-advanced-h">Rules{ fmt.Sprintf(" · %d", len(data.Corrections)) }</h3>
+			<div class="dict-section-note">Every rule applied to dictated text, including the ones fixing a word creates and the ones that ship with BranchKit. A rule matches a regular expression when Regex is on, plain text otherwise.</div>
+				<button class="small" data-on:click={ branchkit.MethodPost("corrections/add", "") }>+ Add Correction</button>
+			<bk-table columns="40px minmax(0, 2fr) 24px minmax(0, 2fr) 60px 60px">
+			<div class="table-header">
+				<div></div>
+				<div>Match</div>
+				<div></div>
+				<div>Replacement</div>
+				<div>Regex</div>
+				<div class="align-right">Actions</div>
+			</div>
+			for _, corr := range data.Corrections {
+				<div class="settings-row">
+					<div class="dict-corr-gutter">
+						if corr.Shipped {
+							<span
+								title="Shipped with BranchKit. 'Restore shipped rules' brings this back; your own rules are never touched."
+								class="dict-shipped-dot"
+							></span>
+						}
+						<bk-toggle checked?={ corr.Enabled }
+							title="Enabled"
+							data-on:change={ branchkit.MethodPost("corrections/update", ui.Args("id", corr.ID, "enabled", ui.Expr("evt.detail.checked"))) }></bk-toggle>
+					</div>
+					<div class="value">
+						<div data-show={ "$editingCorr === " + ui.JS(corr.ID) }>
+							<div class="edit-inline">
+								<input type="text" value={ corr.MatchPattern } data-bind="editMatch"
+									data-on:keydown={ "evt.key === 'Enter' && (" + branchkit.MethodPost("corrections/update", ui.Args("id", corr.ID, "match", ui.Expr("$editMatch"), "replacement", ui.Expr("$editRepl"), "isRegex", corr.IsRegex)) + ", $editingCorr = ''); evt.key === 'Escape' && ($editingCorr = '')" }/>
+							</div>
+						</div>
+						<div data-show={ "$editingCorr !== " + ui.JS(corr.ID) }>
+							<div class="editable-cell">
+								<span>{ corr.MatchPattern }</span>
+								<button class="icon-btn edit-btn" title="Edit"
+									data-on:click={ "$editingCorr = " + ui.JS(corr.ID) + "; $editMatch = " + ui.JS(corr.MatchPattern) + "; $editRepl = " + ui.JS(corr.Replacement) }>&#9998;</button>
+							</div>
+						</div>
+					</div>
+					<div class="dict-corr-arrow">&#8594;</div>
+					<div class="value">
+						<div data-show={ "$editingCorr === " + ui.JS(corr.ID) }>
+							<div class="edit-inline">
+								<input type="text" value={ corr.Replacement } data-bind="editRepl"
+									data-on:keydown={ "evt.key === 'Enter' && (" + branchkit.MethodPost("corrections/update", ui.Args("id", corr.ID, "match", ui.Expr("$editMatch"), "replacement", ui.Expr("$editRepl"), "isRegex", corr.IsRegex)) + ", $editingCorr = ''); evt.key === 'Escape' && ($editingCorr = '')" }/>
+								<button class="edit-save" title="Save (Enter)"
+									data-on:click={ branchkit.MethodPost("corrections/update", ui.Args("id", corr.ID, "match", ui.Expr("$editMatch"), "replacement", ui.Expr("$editRepl"), "isRegex", corr.IsRegex)) + "; $editingCorr = ''" }>&#10003;</button>
+								<button class="edit-cancel" title="Cancel (Esc)"
+									data-on:click="$editingCorr = ''">&#10005;</button>
+							</div>
+						</div>
+						<div data-show={ "$editingCorr !== " + ui.JS(corr.ID) }>
+							<span>{ corr.Replacement }</span>
+						</div>
+					</div>
+					<div class="dict-corr-actions">
+						<bk-toggle checked?={ corr.IsRegex }
+							data-on:change={ branchkit.MethodPost("corrections/update", ui.Args("id", corr.ID, "isRegex", ui.Expr("evt.detail.checked"))) }
+							title="Regex"></bk-toggle>
+					</div>
+					<div class="row-actions">
+						<button class="icon-btn" title="Delete"
+							data-on:click={ branchkit.MethodPost("corrections/delete", ui.Args("id", corr.ID)) }>&#128465;</button>
+					</div>
+				</div>
+			}
+			</bk-table>
+			<div class="dict-corr-actions-bar">
+				<!-- Signal-based confirm, NOT window.confirm(): the settings iframe
+				     sandbox has no allow-modals, so confirm() silently returns false
+				     and the button is dead for every user (found by the dead-control
+				     sweep). Same idiom as the SDK's ui.ConfirmPostButton. -->
+				<span data-signals:confirm-reset__ifmissing="false" class="dict-confirm">
+					<button class="small" data-show="!$confirmReset" data-on:click="$confirmReset = true">Restore shipped rules</button>
+					// The inline display:none stays on these two: datastar reveals an
+					// element by REMOVING the inline display, so a class saying
+					// display: none would take over at that moment and the confirm
+					// buttons would never appear.
+					<button class="small danger" data-show="$confirmReset" style="display:none" data-on:click={ branchkit.MethodPost("corrections/reset", "") + "; $confirmReset = false" }>Restore them?</button>
+					<button class="small" data-show="$confirmReset" style="display:none" data-on:click="$confirmReset = false">Cancel</button>
+				</span>
+			</div>
+			<div class="dict-test">
+				<div class="dict-test-label">Test Area</div>
+				<div class="dict-test-row">
+					<input type="text" placeholder="Type text to test corrections..." data-bind="testInput"
+						class="dict-test-input"/>
+					<button class="small" data-on:click={ branchkit.MethodPost("corrections/test", `{text: $testInput}`) }>Test</button>
+				</div>
+				<div id="test-result" data-show="$testResult" class="dict-test-out"></div>
+			</div>
+			</div>
+		</details>
+	</div>
+}
+
+// styleBox is one choice of the default style: its name and what it does to
+// one real sentence. Selected when it is the default; inert while the style
+// model is missing, as the rest of the section is.
+templ styleBox(data DictationViewData, id, label, example string) {
+	if data.StylesReady {
+		<button
+			class={ "btn-bare dict-style-box", templ.KV("is-active", data.DefaultStyle == id) }
+			aria-pressed={ fmt.Sprint(data.DefaultStyle == id) }
+			data-on:click={ branchkit.MethodPost("app_styles/default", ui.Args("style", id)) }
+		>
+			<strong>{ label }</strong>
+			<span>{ example }</span>
+		</button>
+	} else {
+		<button class="btn-bare dict-style-box" aria-pressed="false" aria-disabled="true" aria-describedby="dict-styles-needs-model">
+			<strong>{ label }</strong>
+			<span>{ example }</span>
+		</button>
+	}
+}
+
+// addAppRow adds an app to the styles table with a style: the app (recently
+// used ones first), the style, Add. Inert, like the rest of the section,
+// while the style model is missing.
+templ addAppRow(data DictationViewData) {
+	<div class="dict-add-app" data-signals:add-app__ifmissing="''" data-signals:add-style__ifmissing={ "'" + addStyleStart(data.DefaultStyle) + "'" }>
+		<select data-bind="addApp" aria-label="App to add as an exception" disabled?={ !data.StylesReady }>
+			<option value="">Add an exception…</option>
+			if hasRecent(data.AddApps) {
+				<optgroup label="Recently used">
+					for _, a := range data.AddApps {
+						if a.Recent {
+							<option value={ a.BundleID }>{ a.Name }</option>
+						}
+					}
+				</optgroup>
+			}
+			<optgroup label="All apps">
+				for _, a := range data.AddApps {
+					if !a.Recent {
+						<option value={ a.BundleID }>{ a.Name }</option>
+					}
+				}
+			</optgroup>
+		</select>
+		<select data-bind="addStyle" aria-label="Style for the app" disabled?={ !data.StylesReady }>
+			for _, c := range RowStyleChoices {
+				<option value={ c.ID }>{ c.Label }</option>
+			}
+		</select>
+		if data.StylesReady {
+			<button class="small" data-attr:disabled="$addApp === ''"
+				data-on:click={ branchkit.MethodPost("app_styles/set", ui.Args("bundle_id", ui.Expr("$addApp"), "style", ui.Expr("$addStyle"))) + "; $addApp = ''" }>Add</button>
+		} else {
+			<button class="small" disabled aria-describedby="dict-styles-needs-model">Add</button>
+		}
+	</div>
+}
+
+// settingRow is one row of a settings card: the setting's name and what it
+// does on the left, its control on the right (the children).
+templ settingRow(label, description string) {
+	<div class="settings-row">
+		<div>
+			<div class="label">{ label }</div>
+			<div class="dict-row-desc">{ description }</div>
+		</div>
+		<div class="value-cell">
+			{ children... }
+		</div>
+	</div>
+}
+
+// modelStatus is a model's state on the right of the sub-heading of the
+// feature it serves: a Download button while it is missing, the download's
+// progress (a bar along the sub-heading's bottom edge) while it is fetched,
+// and once it is on this computer a quiet badge with a Remove (two clicks)
+// that frees the space. Roles follow the platform's button vocabulary: the
+// Download is .primary when it is the only one on the page (otherReady), as
+// .primary is at most one per view; the finished state is .badge-meta, never
+// a coloured badge that would outrank the action still to take.
+templ modelStatus(ready bool, dl ModelDownloadView, ref string, size string, otherReady bool) {
+	if ready {
+		<span class="badge badge-meta">Model downloaded</span>
+		@templ.Raw(ui.ConfirmButton("Remove", "model/delete", ui.Payload("ref", ref), ui.Class("small"), ui.ConfirmLabel("Remove the "+size+" model?")))
+	} else if dl.Active {
+		if dl.Pct == 0 {
+			<span class="dict-model-note">Starting download…</span>
+			<span class="dict-model-bar bk-progress-indeterminate" role="progressbar" aria-label="Model download" aria-valuetext="Starting">
+				<span class="dict-model-bar-fill" style={ dl.ProgressStyle() }></span>
+			</span>
+		} else {
+			<span class="dict-model-note">{ fmt.Sprintf("Downloading model · %d%%", dl.Pct) }</span>
+			<span class="dict-model-bar" role="progressbar" aria-label="Model download" aria-valuemin="0" aria-valuemax="100" aria-valuenow={ fmt.Sprint(dl.Pct) }>
+				<span class="dict-model-bar-fill" style={ dl.ProgressStyle() }></span>
+			</span>
+		}
+	} else {
+		if dl.Failed != "" {
+			<span class="dict-model-note" role="alert">{ "Download failed: " + dl.Failed }</span>
+		} else {
+			<span class="dict-model-note">{ "Model not downloaded · " + size }</span>
+		}
+		<button class={ downloadClass(otherReady) } { busyAttrs(ref)... } data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", ref)) }>Download</button>
+	}
+}

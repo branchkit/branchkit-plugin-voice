@@ -1,0 +1,2102 @@
+/* Voice plugin styles */
+
+/* Score badges (phonetics + pipelines) */
+.score-tag {
+    font-size: var(--font-size--2);
+    font-weight: 600;
+    padding: var(--size--2) var(--size--2);
+    border-radius: var(--border-radius-3);
+    text-align: center;
+}
+.score-green { color: var(--success-text); background: color-mix(in oklab, var(--brand-success-0) 10%, transparent); }
+.score-yellow { color: var(--_ink); background: color-mix(in oklab, var(--brand-cat-user-0) 10%, transparent); }
+.score-red { color: var(--danger-text); background: color-mix(in oklab, var(--brand-danger-0) 10%, transparent); }
+.score-none { color: var(--_ink-dim); background: var(--neutral-2); }
+
+/* Codeword candidates card — codeword-lab results merged with the candidate
+   ledger, rendered under the alphabet table on the Phonetics tab. */
+#candidates-card {
+    margin-top: var(--size-3);
+
+    /* The slot header: one full-width row naming the letter and when it was
+       tested. Stepped back because it labels the rows beneath it rather than
+       being one of them. */
+    & .cand-slot { opacity: 0.8; }
+    & .cand-slot-label { grid-column: 1 / -1; }
+
+    /* Wrong decodes observed for this word, trailing the verdict badge. */
+    & .cand-confusers { margin-left: var(--size--2); }
+}
+
+/* Calibration results */
+.cal-results-header {
+    background: var(--neutral-2); padding: var(--size--2) var(--size-3);
+    display: grid; grid-template-columns: 120px 1fr 60px 80px; gap: var(--size-0);
+    font-size: var(--font-size--2); font-weight: 700; text-transform: uppercase;
+    color: var(--_ink-dim); border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-results-row {
+    padding: var(--size--2) var(--size-3);
+    display: grid; grid-template-columns: 120px 1fr 60px 80px; gap: var(--size-0);
+    align-items: center; border-bottom: none;
+}
+.cal-results-row:last-child { border-bottom: none; }
+.cal-results-status { display: flex; gap: var(--size--2); justify-content: flex-end; }
+
+/* Finished-report "back to the main calibration page" nav, top + bottom */
+.cal-report-nav { display: flex; padding: var(--size--2) var(--size-3); }
+.cal-report-nav--top { border-bottom: var(--border-width-0) solid var(--neutral-variant-3); margin-bottom: var(--size--2); }
+.cal-report-nav--bottom { border-top: var(--border-width-0) solid var(--neutral-variant-3); margin-top: var(--size--2); }
+
+/* Finished-report retune: batch re-test bar + per-row "edit word" popup */
+.cal-report-retune-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--size--2);
+    min-height: 0;
+}
+.cal-report-retune-bar:not(:empty) {
+    padding: var(--size--2) var(--size-3); margin-bottom: var(--size--2);
+    background: color-mix(in oklab, var(--brand-warning-0) 6%, transparent); border: var(--border-width-0) solid color-mix(in oklab, var(--brand-warning-0) 25%, transparent);
+    border-radius: var(--border-radius-3);
+}
+.cal-report-retune-hint { font-size: var(--font-size--2); color: var(--_ink-dim); }
+.cal-report-retest { white-space: nowrap; }
+
+.cal-results-retune {
+    position: relative; display: flex; align-items: center; gap: var(--size--2);
+    padding: var(--size--2) var(--size-3) var(--size--2) var(--size-3); border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-untested-badge {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-3); font-size: var(--font-size--2); font-weight: 600;
+    text-transform: uppercase; letter-spacing: var(--font-letter-spacing-2);
+    background: color-mix(in oklab, var(--brand-warning-0) 14%, transparent); color: var(--warning-text);
+}
+.cal-retune-edit-btn {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); font-size: var(--font-size--2);
+    background: transparent; border: var(--border-width-0) solid transparent; color: var(--_ink-dim);
+    cursor: pointer; transition: all var(--anim-duration-fast);
+}
+.cal-retune-edit-btn:hover { border-color: var(--neutral-variant-3); color: var(--_ink); }
+.cal-retune-popup {
+    position: absolute; top: 100%; left: 20px; z-index: var(--zindex-tooltip);
+    display: flex; align-items: center; gap: var(--size--2);
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-3);
+    background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+    box-shadow: var(--shadow-5);
+}
+.cal-retune-popup-label { font-size: var(--font-size--2); color: var(--_ink-dim); white-space: nowrap; }
+.cal-retune-revert:not(:disabled):hover { border-color: var(--brand-accent-0); color: var(--_ink); }
+.cal-retune-popup-close {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-0); font-size: var(--font-size--2);
+    background: transparent; border: none; color: var(--_ink-dim); cursor: pointer;
+}
+.cal-retune-popup-close:hover { color: var(--_ink); }
+
+/* Calibration */
+/* Fill the settings content area (the three-column live catalog needs room);
+   a high max keeps it sane on ultra-wide displays, padding keeps it off the edge. */
+.calibration-container { max-width: 1500px; margin: 0 auto; padding: 0 var(--size-0); box-sizing: border-box; }
+.calibration-active { display: flex; flex-direction: column; align-items: center; gap: var(--size-4); padding: var(--size-4) 0; }
+
+.cal-stat-bar { display: flex; gap: var(--size-7); font-family: var(--font-mono); }
+.cal-stat-item { display: flex; flex-direction: column; align-items: center; gap: var(--size--2); }
+.cal-stat-label { font-size: var(--font-size--2); color: var(--_ink-dim); text-transform: uppercase; letter-spacing: var(--font-letter-spacing-3); }
+/* --stat-value-color is set inline per item, because which colour a figure
+   takes is data (Passed is green) rather than style. Passing a VALUE inline
+   instead of a whole `color:` rule is the difference the master-detail split
+   turned on: a rule set inline cannot be overridden by anything short of
+   !important, a custom property can. Unset, the figure is ordinary text. */
+.cal-stat-value { font-size: var(--font-size-2); font-weight: 600; color: var(--stat-value-color, var(--_ink)); }
+
+.target-card {
+    background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim);
+    border: var(--border-width-1) solid var(--neutral-variant-3);
+    border-radius: var(--border-radius-4);
+    padding: var(--size-7) var(--size-9);
+    width: 100%; max-width: 420px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    /* The display word sizes off this card's width, not the pane's — the pane
+       container is the whole plugin area and is several times wider, so cqi
+       against it would size the word for space the card does not have. */
+    container-type: inline-size;
+    animation: cal-card-enter var(--anim-duration-4) var(--anim-ease-entrance);
+}
+@keyframes cal-card-enter { from { opacity: var(--anim-opacity-transparent); transform: scale(var(--anim-scale-down)) translateY(var(--anim-distance-md)); } to { opacity: var(--anim-opacity-solid); transform: none; } }
+
+.cal-match-indicator { color: var(--success-text); font-weight: 600; font-size: var(--font-size--1); display: block; margin-bottom: var(--size--2); }
+.cal-trial-meta { font-size: var(--font-size--2); color: var(--_ink-dim); margin-top: var(--size--2); display: flex; gap: var(--size--2); }
+
+.cal-matched { animation: cal-card-success calc(var(--anim-duration-4) * 1.6) var(--anim-ease-entrance); }
+@keyframes cal-card-success {
+    0% { opacity: var(--anim-opacity-transparent); border-color: var(--brand-success-0); box-shadow: 0 0 40px color-mix(in oklab, var(--brand-success-0) 30%, transparent); transform: scale(var(--anim-scale-down)); }
+    40% { opacity: var(--anim-opacity-solid); border-color: var(--brand-success-0); box-shadow: 0 0 20px color-mix(in oklab, var(--brand-success-0) 15%, transparent); }
+    100% { opacity: var(--anim-opacity-solid); border-color: var(--neutral-variant-3); box-shadow: var(--shadow-0); transform: scale(var(--anim-scale-base)); }
+}
+
+.target-label { font-size: var(--font-size--2); color: var(--_ink-dim); font-weight: 500; margin-bottom: var(--size--2); letter-spacing: var(--font-letter-spacing-3); }
+.target-word {
+    /* A one-off display size for the single word you are asked to say. The
+       --text-* scale tops out at 2xl (~24px); a step for one call site would be
+       vocabulary nobody else can use.
+
+       64px was never reachable here and that was the bug. What you are asked to
+       say is a whole COMMAND, not a word -- "hello 1password", "stash tab
+       window <number>" -- and the card is 420px wide with a 273px content box.
+       Measured against the widest token a real prompt contains (AUTOMATOR):
+       403px at 64px, 302px at 48px, 252px at 40px. So 40px is the largest size
+       that keeps a long token whole, and anything above it got broken
+       mid-word or clipped by the card's overflow: hidden.
+
+       The size therefore comes off the card's own inline width -- 14.5cqi is
+       ~40px at today's card and would climb to the 64px ceiling only if the
+       card itself grew that wide. cqi answers container width, NOT text length,
+       so every prompt renders at the same size; a short one no longer reaches
+       display scale, which is the deliberate trade for never breaking a long
+       one. Making it length-responsive needs the longest-token length from the
+       template as a custom property -- worth doing, not done here.
+       overflow-wrap is the last-resort backstop. */
+    font-size: clamp(24px, 14.5cqi, 64px);
+    font-weight: 800; letter-spacing: var(--font-letter-spacing--1);
+    color: var(--_ink); margin-bottom: var(--size-0);
+    overflow-wrap: anywhere;
+    /* Unitless, deliberately, and NOT --font-line-height-*: those tokens are
+       absolute rem sized for the type scale, and --font-line-height--3 is
+       1.2348rem = 19.8px. On a 64px word that is 20px of leading for 64px of
+       type, so two lines overlapped by more than half their height -- which is
+       what a wrapped prompt actually looked like. Absolute leading only works
+       on a font-size the scale computed it for, and this size is off-scale by
+       construction. */
+    line-height: 1.05;
+    animation: cal-word-enter var(--anim-duration-base) var(--anim-ease-entrance);
+}
+@keyframes cal-word-enter { from { opacity: var(--anim-opacity-transparent); transform: translateY(var(--anim-distance-lg)); } to { opacity: var(--anim-opacity-solid); transform: none; } }
+
+.cal-heard-area { font-size: var(--font-size--1); min-height: 22px; margin-bottom: var(--size-3); }
+.cal-heard-label { color: var(--_ink-dim); }
+.cal-heard-text { color: var(--accent-text); font-weight: 500; }
+.cal-heard-waiting { color: var(--scrim-6); font-style: italic; }
+
+/* Live Lever-E counterfactual: shown only when the never-standalone penalty
+   flipped this clip's decode — the off (discarded) word struck through, the on
+   (kept) word in accent. */
+.cal-bias {
+    display: inline-flex; align-items: center; gap: var(--size--2);
+    font-size: var(--font-size--2); margin: calc(-1 * var(--size--2)) 0 var(--size-0); letter-spacing: var(--font-letter-spacing-1);
+}
+.cal-bias-label {
+    text-transform: uppercase; font-size: var(--font-size--2); letter-spacing: var(--font-letter-spacing-3);
+    color: var(--_ink-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+    border-radius: var(--border-radius-0); padding: var(--size--2) var(--size--2);
+}
+.cal-bias-off { color: var(--_ink-dim); text-decoration: line-through; opacity: 0.7; }
+.cal-bias-arrow { color: var(--_ink-dim); }
+.cal-bias-on { color: var(--success-text); font-weight: 600; }
+
+.cal-overall-progress { width: 100%; height: 3px; background: var(--neutral-3); --_ink: var(--neutral-3-on); --_ink-dim: var(--neutral-3-dim); border-radius: var(--border-radius-0); }
+.cal-overall-fill { height: 100%; background: var(--brand-accent-0); border-radius: var(--border-radius-0); transition: width var(--anim-duration-4) ease; }
+
+.cal-nav-buttons { display: flex; gap: var(--size--2); align-items: center; order: -1; margin-bottom: var(--size-0); }
+.cal-nav-btn {
+    background: transparent; border: var(--border-width-0) solid var(--neutral-variant-3);
+    color: var(--_ink-dim); padding: var(--size--2) var(--size-0); border-radius: var(--border-radius-3);
+    cursor: pointer; font-size: var(--font-size--2); transition: all var(--anim-duration-fast);
+}
+.cal-nav-btn:hover:not(:disabled) { background: var(--neutral-2); color: var(--_ink); border-color: var(--_ink-dim); }
+.cal-nav-btn:disabled { opacity: 0.2; cursor: default; }
+.cal-stop-btn { color: var(--danger-text); border-color: color-mix(in oklab, var(--brand-danger-0) 30%, transparent); }
+.cal-stop-btn:hover { background: color-mix(in oklab, var(--brand-danger-0) 10%, transparent); border-color: var(--brand-danger-0); color: var(--danger-text); }
+
+/* Pause overlay — modal-style scrim + centered panel on top of the
+   active-game UI. Positioned absolute relative to .calibration-active
+   so it covers exactly the game area, not the whole settings page. */
+.calibration-active { position: relative; }
+.cal-pause-overlay {
+    position: absolute; inset: 0;
+    background: var(--scrim-under-2); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: var(--zindex-dialog);
+}
+.cal-pause-panel {
+    background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+    border-radius: var(--border-radius-3); padding: var(--size-4) var(--size-4);
+    display: flex; flex-direction: column; align-items: center; gap: var(--size-0);
+    min-width: 340px; max-width: 480px;
+    box-shadow: var(--shadow-5);
+}
+.cal-pause-title { font-size: var(--font-size-1); font-weight: 600; color: var(--_ink); }
+.cal-pause-subtitle { font-size: var(--font-size--2); color: var(--_ink-dim); text-align: center; line-height: var(--font-line-height--3); }
+.cal-pause-buttons { display: flex; gap: var(--size--2); margin-top: var(--size--2); }
+.cal-pause-resume { color: var(--success-text); border-color: color-mix(in oklab, var(--brand-success-0) 30%, transparent); }
+.cal-pause-resume:hover { background: color-mix(in oklab, var(--brand-success-0) 10%, transparent); border-color: var(--brand-success-0); color: var(--success-text); }
+
+/* Hero header: title + Reports entry-point button on the right */
+.cal-hero-header { display: flex; align-items: center; justify-content: space-between; gap: var(--size-0); margin-bottom: var(--size--2); }
+
+/* Reports surface — full session history with inline expandable detail */
+.cal-reports { display: flex; flex-direction: column; gap: var(--size-0); padding: var(--size-0) 0; }
+.cal-reports-header { display: flex; align-items: center; justify-content: space-between; gap: var(--size-0); }
+.cal-reports-header h2 { margin: 0; }
+.cal-reports-back { color: var(--_ink-dim); }
+.cal-reports-intro { font-size: var(--font-size--2); color: var(--_ink-dim); margin: 0; }
+.cal-reports-empty {
+    text-align: center; padding: var(--size-7) var(--size-0); color: var(--_ink-dim); font-size: var(--font-size--1);
+    border: var(--border-width-0) dashed var(--neutral-variant-3); border-radius: var(--border-radius-3);
+}
+.cal-reports-list { display: flex; flex-direction: column; gap: var(--size--2); }
+.cal-reports-session {
+    background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+    border-radius: var(--border-radius-3); overflow: hidden;
+}
+.cal-reports-session[open] { background: var(--neutral-2); --_ink: var(--neutral-2-on); --_ink-dim: var(--neutral-2-dim); }
+.cal-reports-summary {
+    display: grid;
+    grid-template-columns: 110px 1fr 60px 60px 60px 1fr;
+    gap: var(--size--2); align-items: center; padding: var(--size--2) var(--size--2);
+    cursor: pointer; font-size: var(--font-size--1); list-style: none;
+}
+.cal-reports-summary::-webkit-details-marker { display: none; }
+.cal-reports-summary:hover { background: var(--neutral-2); }
+.cal-reports-date { color: var(--_ink-dim); font-size: var(--font-size--2); }
+.cal-reports-group { color: var(--_ink); font-weight: 500; }
+.cal-reports-mode-badge {
+    display: inline-block;
+    margin-left: var(--size--2);
+    padding: var(--size--2) var(--size--2);
+    font-size: var(--font-size--2);
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--warning-text);
+    border: var(--border-width-0) solid var(--brand-warning-0);
+    border-radius: var(--border-radius-0);
+    vertical-align: middle;
+}
+.cal-reports-score { font-weight: 600; color: var(--_ink); text-align: right; }
+.cal-reports-counts { color: var(--_ink-dim); font-size: var(--font-size--2); text-align: right; }
+.cal-reports-duration { color: var(--_ink-dim); font-size: var(--font-size--2); text-align: right; }
+.cal-reports-engine { color: var(--_ink-dim); font-size: var(--font-size--2); text-align: right; font-family: var(--font-mono); }
+.cal-reports-detail { padding: var(--size--2) var(--size--2) var(--size--2); border-top: var(--border-width-0) solid var(--neutral-variant-3); }
+.cal-reports-attempts-header,
+.cal-reports-attempt {
+    display: grid;
+    grid-template-columns: 100px 1fr 80px 50px;
+    gap: var(--size--2); padding: var(--size--2) 0; font-size: var(--font-size--2);
+}
+.cal-reports-attempts-header { color: var(--_ink-dim); font-weight: 600; border-bottom: var(--border-width-0) solid var(--neutral-variant-3); margin-bottom: var(--size--2); }
+.cal-reports-attempt { border-bottom: var(--border-width-0) solid var(--neutral-variant-2); align-items: start; }
+.cal-reports-attempt:last-child { border-bottom: none; }
+.cal-reports-attempt-pass .cal-reports-target { color: var(--success-text); }
+.cal-reports-attempt-fail .cal-reports-target { color: var(--danger-text); }
+.cal-reports-attempt-filter .cal-reports-target { color: var(--warning-text); }
+.cal-reports-target { font-family: var(--font-mono); font-weight: 600; }
+.cal-reports-heard { color: var(--_ink); font-family: var(--font-mono); }
+.cal-reports-revisions { color: var(--_ink-dim); font-size: var(--font-size--2); margin-left: var(--size--2); }
+.cal-reports-dur { color: var(--_ink-dim); font-family: var(--font-mono); }
+
+/* Mishear trail: earlier (wrong) heards dimmed, the settled one emphasized */
+.cal-heard-step { font-family: var(--font-mono); color: var(--_ink-dim); }
+.cal-heard-final { color: var(--_ink); }
+.cal-heard-arrow { color: var(--_ink-dim); font-size: var(--font-size--2); margin: 0 var(--size--2); }
+/* How many holds decoded to this same text. Sized in em so it tracks the step
+   it hangs off rather than the page. */
+/* em, deliberately: this count trails whatever size the word beside it is. */
+.cal-heard-count { opacity: 0.7; font-size: 0.85em; margin-left: 0.15em; }
+/* Holds the engine decoded to nothing. Italic because it is a note about the
+   absence of a result, not a result. */
+.cal-heard-silent { color: var(--_ink-dim); font-style: italic; margin-left: 0.4em; }
+.cal-reports-outcome { text-align: center; }
+.cal-match-indicator { color: var(--success-text); }
+.cal-miss-indicator { color: var(--danger-text); }
+.cal-filter-indicator { color: var(--warning-text); font-size: var(--font-size--1); }
+
+.cal-rollup-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--size--2); margin: var(--size--2) 0 var(--size-0);
+}
+.cal-rollup-card {
+    background: var(--surface, var(--scrim-1));
+    border: var(--border-width-0) solid var(--border, var(--neutral-variant-3));
+    border-radius: var(--border-radius-3); padding: var(--size--2) var(--size--2);
+    display: flex; flex-direction: column; gap: var(--size--2);
+}
+.cal-rollup-header { display: flex; align-items: center; gap: var(--size--2); }
+.cal-rollup-context {
+    font-family: var(--font-mono); font-weight: 600; font-size: var(--font-size--1);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Unitless leading: --font-size-2 reaches 1.44rem (23px) and
+   --font-line-height--3 is 1.2348rem (19.8px), so the absolute token is
+   SMALLER than the type it sits on and the lines would overlap the moment
+   this wraps. Same mispairing as .target-word, just not yet visible. */
+.cal-rollup-accuracy { font-size: var(--font-size-2); font-weight: 700; color: var(--_ink); line-height: 1.2; }
+.cal-rollup-breakdown { display: flex; gap: var(--size--2); font-family: var(--font-mono); font-size: var(--font-size--2); }
+.cal-rollup-pass { color: var(--success-text); }
+.cal-rollup-filter { color: var(--warning-text); }
+.cal-rollup-miss { color: var(--danger-text); }
+.cal-rollup-footer { color: var(--_ink-dim); font-size: var(--font-size--2); }
+.cal-rollup-recency { margin-left: var(--size--2); }
+
+/* Word-level diagnostics sub-line under each attempt row */
+.cal-reports-wordinfo {
+    /* 100px is an INDENT, not spacing: it lines this wrapped row up under the
+       first column of .cal-reports-attempt's grid, which starts at 100px. A
+       fluid token here would drift out of that alignment. */
+    grid-column: 1 / -1; padding: var(--size--2) 0 var(--size--2) 100px;
+    display: flex; gap: var(--size--2); font-size: var(--font-size--2);
+}
+.cal-wordinfo-acc { color: var(--_ink-dim); }
+.cal-wordinfo-confuser { color: var(--warning-text); font-family: var(--font-mono); }
+.cal-wordinfo-unstable { color: var(--warning-text); }
+.cal-wordinfo-robust { color: var(--success-text); }
+
+.cal-reports-decision {
+    grid-column: 1 / -1; padding: var(--size--2) 0 var(--size--2) 100px;
+    font-size: var(--font-size--2); display: flex; flex-wrap: wrap; gap: var(--size--2); align-items: baseline;
+}
+.cal-decision-label { color: var(--_ink-dim); font-weight: 600; text-transform: uppercase; letter-spacing: var(--font-letter-spacing-2); }
+.cal-decision-winner { font-family: var(--font-mono); padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-0); }
+.cal-winner-gated_scoped { background: color-mix(in oklab, var(--brand-success-0) 15%, transparent); color: var(--success-text); }
+.cal-winner-gated_unscoped { background: color-mix(in oklab, var(--brand-warning-0) 15%, transparent); color: var(--warning-text); }
+.cal-winner-ungated { background: color-mix(in oklab, var(--brand-cat-cap-0) 15%, transparent); color: var(--_ink); }
+.cal-winner-no_match { background: color-mix(in oklab, var(--brand-warning-0) 15%, transparent); color: var(--warning-text); }
+.cal-decision-gates { color: var(--_ink-dim); font-family: var(--font-mono); }
+.cal-decision-empty { font-style: italic; }
+.cal-decision-partial { color: var(--warning-text); }
+
+/* Expansion groups (a command walked over a list) */
+.cal-group-badge {
+    margin-left: var(--size--2); padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-3); font-size: var(--font-size--2);
+    background: var(--neutral-3); color: var(--_ink-dim);
+}
+
+/* In-walk codeword retune (live trial card) */
+.cal-retune {
+    display: flex; align-items: center; gap: var(--size--2); margin-top: var(--size--2);
+    padding-top: var(--size--2); border-top: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-retune-label { font-size: var(--font-size--2); color: var(--_ink-dim); }
+.cal-retune-input {
+    width: 130px; padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); font-size: var(--font-size--2);
+    background: transparent; border: var(--border-width-0) solid var(--neutral-variant-3); color: var(--_ink);
+    transition: all var(--anim-duration-fast);
+}
+.cal-retune-input:focus { border-color: var(--brand-accent-0); background: var(--neutral-2); outline: none; }
+.cal-retune-btn:not(:disabled):hover { border-color: var(--brand-accent-0); color: var(--_ink); }
+
+.cal-word-chips {
+    display: flex; flex-wrap: wrap; gap: var(--size--2); margin-top: var(--size--2);
+    padding: var(--size--2); background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border-radius: var(--border-radius-3);
+    border: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-word-chip {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-0); font-size: var(--font-size--2);
+    font-family: var(--font-mono); transition: all var(--anim-duration-base);
+}
+/* Drillable chips render as buttons — clickable to start a one-word
+   calibration. Hover shows the accent border so the affordance is
+   visible. Reset button defaults so the chip blends with non-drillable
+   spans. */
+button.cal-word-chip-drill {
+    background: transparent; border: var(--border-width-0) solid transparent; cursor: pointer;
+    /* `font: inherit` means the size is whatever the caller's is, and an
+       absolute leading over an unknown size is unsound by construction --
+       inherit that too rather than pinning rem against a size we cannot see. */
+    color: inherit; font: inherit; line-height: inherit; text-align: center;
+}
+button.cal-word-chip-drill:hover {
+    background: color-mix(in oklab, var(--brand-accent-0) 10%, transparent); border-color: var(--brand-accent-0);
+}
+button.cal-word-chip-drill:focus-visible {
+    outline: 2px solid var(--brand-accent-0); outline-offset: 1px;
+}
+.cal-word-pending { color: var(--_ink-dim); background: transparent; }
+.cal-word-current { color: var(--_ink); background: color-mix(in oklab, var(--brand-accent-0) 20%, transparent); border: var(--border-width-0) solid var(--brand-accent-0); font-weight: 600; }
+.cal-word-passed { color: var(--success-text); background: color-mix(in oklab, var(--brand-success-0) 10%, transparent); }
+.cal-word-failed { color: var(--danger-text); background: color-mix(in oklab, var(--brand-danger-0) 8%, transparent); text-decoration: line-through; }
+.cal-word-heard {
+    display: block; font-size: var(--font-size--2); opacity: 0.7; font-style: italic;
+    margin-top: var(--size--2); text-decoration: none;
+}
+
+.cal-next-btn { color: var(--accent-text) !important; border-color: var(--brand-accent-0) !important; }
+.cal-next-btn:hover { background: color-mix(in oklab, var(--brand-accent-0) 10%, transparent) !important; }
+
+.cal-outcome-matched .badge { background: color-mix(in oklab, var(--brand-success-0) 20%, transparent); color: var(--success-text); }
+.cal-outcome-failed .badge { background: color-mix(in oklab, var(--brand-danger-0) 20%, transparent); color: var(--danger-text); }
+.cal-outcome-skipped .badge { background: var(--neutral-3); color: var(--_ink-dim); }
+
+.cal-result-detail { border-bottom: var(--border-width-0) solid var(--neutral-variant-3); }
+.cal-result-detail summary { cursor: pointer; list-style: none; }
+.cal-result-detail summary::-webkit-details-marker { display: none; }
+.cal-result-detail[open] summary { border-bottom: var(--border-width-0) solid var(--neutral-variant-2); }
+
+.cal-frames { padding: var(--size--2) var(--size--2); font-size: var(--font-size--2); font-family: var(--font-mono); background: var(--scrim-under-1); }
+.cal-frames--empty { color: var(--_ink-dim); font-style: italic; font-family: inherit; }
+.cal-frame-row { display: flex; gap: var(--size--2); padding: var(--size--2) 0; align-items: baseline; color: var(--_ink-dim); }
+.cal-frame-row.cal-frame-final { color: var(--_ink); font-weight: 500; }
+.cal-frame-offset { min-width: 50px; color: var(--_ink-dim); }
+.cal-frame-text { min-width: 80px; }
+.cal-frame-final-badge { font-size: var(--font-size--2); color: var(--accent-text); font-weight: 500; }
+
+.cal-results-dur { color: var(--_ink-dim); font-size: var(--font-size--2); }
+.cal-chip-active {
+    border-color: var(--brand-accent-0) !important; color: var(--_ink) !important;
+    background: color-mix(in oklab, var(--brand-accent-0) 15%, transparent) !important;
+}
+.cal-panel {
+    margin-top: var(--size--2); padding: var(--size-3); border-radius: var(--border-radius-3);
+    background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-panel__header {
+    display: flex; align-items: baseline; gap: var(--size--2); margin-bottom: var(--size-0);
+}
+.cal-panel__title {
+    font-size: var(--font-size-0); font-weight: 600; color: var(--_ink);
+    text-transform: capitalize;
+}
+.cal-panel__subtitle {
+    font-size: var(--font-size--1); color: var(--_ink-dim);
+}
+.cal-panel__body { }
+.cal-panel__actions {
+    display: flex; gap: var(--size--2); margin-top: var(--size-0); padding-top: var(--size-0);
+    border-top: var(--border-width-0) solid var(--neutral-variant-3);
+}
+
+/* Health overview */
+.cal-health-section { }
+.cal-health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--size--2); }
+.cal-health-card {
+    background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-3);
+    padding: var(--size--2) var(--size-0); display: flex; flex-direction: column; gap: var(--size--2);
+}
+.cal-health-card--untested { opacity: 0.5; }
+.cal-health-card__header { display: flex; justify-content: space-between; align-items: baseline; }
+.cal-health-card__group { font-size: var(--font-size--1); font-weight: 600; color: var(--_ink); text-transform: capitalize; }
+.cal-health-card__meta { font-size: var(--font-size--2); color: var(--_ink-dim); }
+.cal-health-card__rate { font-size: var(--font-size-2); font-weight: 700; color: var(--_ink); font-family: var(--font-mono); }
+.cal-health-card__footer { display: flex; justify-content: space-between; font-size: var(--font-size--2); color: var(--_ink-dim); }
+
+/* Confusion pairs */
+.cal-confusion-section { }
+.cal-confusion-list { display: flex; flex-direction: column; gap: var(--size--2); }
+.cal-confusion-row {
+    display: flex; align-items: center; gap: var(--size--2);
+    padding: var(--size--2) var(--size--2); background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+    border-radius: var(--border-radius-1); font-size: var(--font-size--1);
+}
+.cal-confusion-target { font-family: var(--font-mono); font-weight: 600; color: var(--_ink); }
+.cal-confusion-arrow { color: var(--_ink-dim); font-size: var(--font-size--2); }
+.cal-confusion-heard { font-family: var(--font-mono); color: var(--danger-text); }
+.cal-confusion-rate { margin-left: auto; font-size: var(--font-size--2); font-weight: 600; color: var(--warning-text); }
+.cal-confusion-count { font-size: var(--font-size--2); color: var(--_ink-dim); }
+
+/* Word fragility capture toggle */
+.cal-capture-section { }
+.cal-capture-row {
+    display: flex; align-items: center; gap: var(--size--2);
+    padding: var(--size--2) var(--size--2); background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+    border-radius: var(--border-radius-1);
+}
+.cal-capture-row .cal-section-desc { margin: 0; flex: 1; }
+.cal-capture-toggle {
+    padding: var(--size--2) var(--size-0); border-radius: var(--border-radius-1); cursor: pointer; min-width: 52px;
+    border: var(--border-width-0) solid var(--neutral-variant-3); background: transparent; color: var(--_ink); font-weight: 600;
+}
+.cal-capture-toggle--on { background: var(--accent-fill); color: var(--brand-accent-0-on); border-color: var(--brand-accent-0); }
+
+/* Capture retention segmented control + clear action */
+.cal-capture-retention {
+    display: flex; align-items: center; flex-wrap: wrap; gap: var(--size--2);
+    margin-top: var(--size--2); font-size: var(--font-size--2);
+}
+.cal-capture-retention-label { color: var(--_ink-dim); }
+.cal-retention-btn {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); cursor: pointer; font-size: var(--font-size--2);
+    border: var(--border-width-0) solid var(--neutral-variant-3); background: transparent; color: var(--_ink);
+}
+.cal-retention-btn--active { background: var(--accent-fill); color: var(--brand-accent-0-on); border-color: var(--brand-accent-0); }
+.cal-capture-clips {
+    display: flex; align-items: center; gap: var(--size--2); margin-top: var(--size--2); font-size: var(--font-size--2);
+}
+.cal-capture-clips-count { color: var(--_ink-dim); }
+.cal-capture-clear {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); cursor: pointer; font-size: var(--font-size--2);
+    border: var(--border-width-0) solid color-mix(in oklab, var(--brand-danger-0) 50%, transparent); background: transparent; color: var(--danger-text);
+}
+
+/* Recordings list — the kept calibration clips with their labels. */
+.cal-recordings { margin-top: var(--size--2); border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-3); overflow: hidden; }
+.cal-recordings__head {
+    display: flex; align-items: baseline; gap: var(--size--2);
+    padding: var(--size--2) var(--size--2); font-size: var(--font-size--2); font-weight: 600; color: var(--_ink);
+    background: var(--neutral-2); border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-recordings__count { color: var(--_ink-dim); font-weight: 400; }
+/* In-context pointer to the platform's never-standalone penalty (edited on the Commands
+   page) — shown where its per-recording effect is observed. */
+.cal-recordings__bias-link { color: var(--_ink-dim); text-decoration: none; font-weight: 400; font-size: var(--font-size--2); opacity: 0.75; }
+.cal-recordings__bias-link:hover { opacity: 1; text-decoration: underline; }
+.cal-recordings__actions { margin-left: auto; display: inline-flex; gap: var(--size--2); align-items: center; }
+.cal-cap-reprobe {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); cursor: pointer; font-size: var(--font-size--2);
+    border: var(--border-width-0) solid var(--brand-accent-0); background: transparent; color: var(--accent-text);
+}
+.cal-cap-reprobe:hover { background: color-mix(in oklab, var(--brand-accent-0) 12%, transparent); }
+.cal-cap-export {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); cursor: pointer; font-size: var(--font-size--2);
+    border: var(--border-width-0) solid var(--brand-success-0); background: transparent; color: var(--success-text);
+}
+.cal-cap-export:hover { background: color-mix(in oklab, var(--brand-success-0) 12%, transparent); }
+.cal-rec-export-status {
+    padding: var(--size--2) var(--size--2); font-size: var(--font-size--2); color: var(--_ink-dim);
+    background: var(--neutral-2); border-bottom: var(--border-width-0) solid var(--neutral-variant-3); word-break: break-all;
+}
+/* The manual bias control (moved from the platform commands page 2026-09-11):
+   toggle + strength + provenance, one quiet row above the recommendation. */
+.cal-rec-bias-manual {
+    display: flex;
+    align-items: center;
+    gap: var(--size--1);
+    margin: var(--size--2) 0;
+    font-size: var(--font-size--2);
+}
+.cal-rec-bias-manual__label { font-weight: 600; }
+.cal-rec-bias-manual__slider { width: 160px; accent-color: var(--brand-accent-0); }
+.cal-rec-bias-manual__slider:disabled { opacity: 0.35; }
+.cal-rec-bias-manual__value { font-family: var(--font-mono); min-width: 2ch; }
+.cal-rec-bias-manual__prov { color: var(--_ink-dim); }
+
+.cal-rec-bias-recommend {
+    display: flex; align-items: center; gap: var(--size--2); flex-wrap: wrap;
+    padding: var(--size--2) var(--size--2); font-size: var(--font-size--2);
+    background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-rec-bias-recommend__label { color: var(--_ink); }
+.cal-rec-bias-recommend__status { color: var(--_ink-dim); }
+.cal-rec-group__reprobe {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); cursor: pointer; font-size: var(--font-size--2); white-space: nowrap;
+    border: var(--border-width-0) solid var(--neutral-variant-3); background: transparent; color: var(--_ink-dim);
+}
+.cal-rec-group__reprobe:hover { color: var(--accent-text); border-color: var(--brand-accent-0); }
+.cal-rec-group__delete {
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); cursor: pointer; font-size: var(--font-size--2); white-space: nowrap;
+    border: var(--border-width-0) solid var(--neutral-variant-3); background: transparent; color: var(--_ink-dim);
+}
+.cal-rec-group__delete:hover { color: var(--danger-text); border-color: color-mix(in oklab, var(--brand-danger-0) 50%, transparent); }
+
+/* Recordings filter bar: search by command + status chips. */
+.cal-rec-filters {
+    display: flex; align-items: center; gap: var(--size--2); flex-wrap: wrap;
+    padding: var(--size--2) var(--size--2); background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-rec-search {
+    flex: 1; min-width: 140px; font-size: var(--font-size--2); padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1);
+    border: var(--border-width-0) solid var(--neutral-variant-3); background: var(--scrim-under-1); color: var(--_ink);
+}
+.cal-rec-chips { display: inline-flex; gap: var(--size--2); flex-wrap: wrap; }
+.cal-rec-chip {
+    font-size: var(--font-size--2); padding: var(--size--2) var(--size--2); border-radius: var(--radius-pill); cursor: pointer; white-space: nowrap;
+    border: var(--border-width-0) solid var(--neutral-variant-3); background: transparent; color: var(--_ink-dim);
+}
+.cal-rec-chip:hover { color: var(--_ink); border-color: var(--_ink-dim); }
+.cal-rec-chip--on { background: var(--accent-fill); border-color: var(--brand-accent-0); color: var(--brand-accent-0-on); }
+
+/* Grouped / most-recent view toggle (segmented). */
+.cal-rec-views { display: inline-flex; border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-1); overflow: hidden; }
+.cal-rec-view {
+    font-size: var(--font-size--2); padding: var(--size--2) var(--size--2); cursor: pointer; white-space: nowrap;
+    border: none; background: transparent; color: var(--_ink-dim);
+}
+.cal-rec-view:hover { color: var(--_ink); }
+.cal-rec-view--on { background: var(--accent-fill); color: var(--brand-accent-0-on); }
+
+.cal-recordings__groups { max-height: 360px; overflow-y: auto; }
+/* Flat "most recent" list: clips without the group indent. */
+.cal-recordings__flat { max-height: 360px; overflow-y: auto; }
+.cal-recordings__flat .cal-clip { padding-left: var(--size--2); border-top: var(--border-width-0) solid var(--neutral-variant-2); }
+.cal-recordings__flat .cal-clip:first-child { border-top: none; }
+
+/* Per-target collapsible group — the icon + its derived fuzzy state. */
+.cal-rec-group { border-bottom: var(--border-width-0) solid var(--neutral-variant-2); }
+.cal-rec-group:last-child { border-bottom: none; }
+.cal-rec-group__summary {
+    display: flex; align-items: center; gap: var(--size--2); cursor: pointer; list-style: none;
+    padding: var(--size--2) var(--size--2); font-size: var(--font-size--2); background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim);
+}
+.cal-rec-group__summary::-webkit-details-marker { display: none; }
+.cal-rec-group__summary::before { content: "\25B8"; color: var(--_ink-dim); font-size: var(--font-size--2); }
+.cal-rec-group[open] > .cal-rec-group__summary::before { content: "\25BE"; }
+.cal-rec-group__summary:hover { background: var(--neutral-2); }
+.cal-rec-group__target { font-weight: 600; color: var(--_ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-rec-group__count { color: var(--_ink-dim); margin-left: auto; white-space: nowrap; }
+
+/* Derived fragility verdict pill (robust/fragile/mushy). */
+/* Verdict severity gradient: robust green → fragile yellow → unstable orange → broken red. */
+.cal-frag-badge { font-size: var(--font-size--2); padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-3); font-weight: 600; border: var(--border-width-0) solid transparent; }
+.cal-frag-badge--robust { color: var(--success-text); border-color: color-mix(in oklab, var(--brand-success-0) 40%, transparent); background: color-mix(in oklab, var(--brand-success-0) 10%, transparent); }
+.cal-frag-badge--fragile { color: var(--_ink); border-color: color-mix(in oklab, var(--brand-cat-user-0) 40%, transparent); background: color-mix(in oklab, var(--brand-cat-user-0) 10%, transparent); }
+.cal-frag-badge--unstable { color: var(--warning-text); border-color: color-mix(in oklab, var(--brand-warning-0) 40%, transparent); background: color-mix(in oklab, var(--brand-warning-0) 10%, transparent); }
+.cal-frag-badge--broken { color: var(--danger-text); border-color: color-mix(in oklab, var(--brand-danger-0) 40%, transparent); background: color-mix(in oklab, var(--brand-danger-0) 10%, transparent); }
+.cal-frag-ratio { font-size: var(--font-size--2); color: var(--_ink-dim); font-variant-numeric: tabular-nums; }
+
+/* Clip rows inside a group. */
+.cal-rec-group__clips { background: var(--scrim-under-1); }
+.cal-clip { padding: var(--size--2) var(--size--2) var(--size--2) var(--size-3); border-top: var(--border-width-0) solid var(--neutral-variant-2); }
+.cal-clip__main {
+    display: grid; grid-template-columns: auto minmax(70px, 1fr) auto minmax(0, 1.2fr) auto auto;
+    align-items: center; gap: var(--size--2); font-size: var(--font-size--2);
+}
+.cal-recording__audio { width: 160px; height: 28px; }
+.cal-recording__word { font-weight: 600; color: var(--_ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-recording__heard { display: inline-flex; align-items: baseline; gap: var(--size--2); color: var(--_ink-dim); min-width: 0; }
+.cal-recording__match--ok { color: var(--success-text); }
+.cal-recording__match--miss { color: var(--warning-text); }
+.cal-recording__when { color: var(--_ink-dim); font-size: var(--font-size--2); white-space: nowrap; }
+.cal-recording__dim { color: var(--_ink-dim); font-style: italic; }
+
+/* Per-clip status cell: latest outcome chip + a needs-review nudge. */
+.cal-clip-status { display: inline-flex; align-items: baseline; gap: var(--size--2); min-width: 0; }
+.cal-clip-outcome { font-size: var(--font-size--2); font-family: var(--font-mono); white-space: nowrap; }
+.cal-clip-outcome--held { color: var(--success-text); }
+.cal-clip-outcome--fragile { color: var(--warning-text); }
+.cal-clip-outcome--fails_clean { color: var(--danger-text); }
+/* bias strength-sweep score (flip threshold). Neutral/accent — it's a
+   measurement, not a pass/fail. */
+.cal-clip-bias { font-size: var(--font-size--2); font-family: var(--font-mono); white-space: nowrap; color: var(--accent-text); opacity: 0.85; }
+.cal-clip-review {
+    font-size: var(--font-size--2); font-weight: 600; white-space: nowrap; padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-3);
+    color: var(--warning-text); border: var(--border-width-0) solid color-mix(in oklab, var(--brand-warning-0) 40%, transparent); background: color-mix(in oklab, var(--brand-warning-0) 10%, transparent);
+}
+
+/* Per-clip drill-down: per-word fragility + overall + re-probe history. */
+.cal-clip-detail { margin-top: var(--size--2); }
+.cal-clip-detail__toggle { cursor: pointer; font-size: var(--font-size--2); color: var(--_ink-dim); list-style: none; padding: var(--size--2) 0; }
+.cal-clip-detail__toggle::-webkit-details-marker { display: none; }
+.cal-clip-detail__toggle::before { content: "\25B8 "; }
+.cal-clip-detail[open] > .cal-clip-detail__toggle::before { content: "\25BE "; }
+.cal-clip-detail__body { padding: var(--size--2) 0 var(--size--2) var(--size--2); display: flex; flex-direction: column; gap: var(--size--2); font-size: var(--font-size--2); }
+.cal-clip-frag__title, .cal-clip-history__title {
+    font-size: var(--font-size--2); color: var(--_ink-dim); text-transform: uppercase; letter-spacing: var(--font-letter-spacing-2); margin-bottom: var(--size--2);
+}
+.cal-clip-word { display: flex; gap: var(--size--2); align-items: baseline; padding: var(--size--2) 0; }
+.cal-clip-word__name { font-family: var(--font-mono); font-weight: 600; color: var(--_ink); min-width: 84px; }
+.cal-clip-word__held { color: var(--success-text); }
+.cal-clip-word__conf { color: var(--warning-text); font-family: var(--font-mono); }
+.cal-clip-overall { display: flex; gap: var(--size--2); align-items: baseline; color: var(--_ink-dim); }
+.cal-clip-history__row {
+    display: grid; grid-template-columns: auto auto 1fr; gap: var(--size--2); align-items: baseline;
+    padding: var(--size--2) 0; color: var(--_ink-dim); font-size: var(--font-size--2);
+}
+.cal-clip-history__model { font-family: var(--font-mono); }
+.cal-clip-history__summary { font-family: var(--font-mono); color: var(--_ink); }
+/* Per-clip actions: the two review toggles (said it right / wrong) + delete. */
+.cal-clip__actions { display: inline-flex; gap: var(--size--2); align-items: center; justify-self: end; }
+.cal-dispo-btn {
+    font-size: var(--font-size--2); padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); white-space: nowrap;
+    border: var(--border-width-0) solid var(--neutral-variant-3); background: transparent; color: var(--_ink-dim); cursor: pointer;
+}
+.cal-dispo-btn:hover { color: var(--_ink); border-color: var(--_ink-dim); }
+.cal-dispo-btn--on.cal-dispo-btn--confirmed { background: var(--brand-success-0); border-color: var(--brand-success-0); color: var(--brand-success-0-on); }
+.cal-dispo-btn--on.cal-dispo-btn--misspoke { background: var(--_ink-dim); border-color: var(--_ink-dim); color: var(--_ink); }
+.cal-clip__delete {
+    font-size: var(--font-size--2); line-height: var(--font-line-height--3); padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1);
+    border: var(--border-width-0) solid transparent; background: transparent; color: var(--_ink-dim); cursor: pointer;
+}
+.cal-clip__delete:hover { color: var(--danger-text); border-color: color-mix(in oklab, var(--brand-danger-0) 50%, transparent); }
+/* An excluded ("said it wrong") clip is dimmed; hover restores it so it stays interactive. */
+.cal-clip--excluded { opacity: 0.5; }
+.cal-clip--excluded:hover { opacity: 1; }
+/* A confirmed ("said it right") clip gets a quiet green spine — vetted, kept. */
+.cal-clip--confirmed { box-shadow: inset 2px 0 0 var(--brand-success-0); }
+
+/* Word fragility (Sherpa re-decode probe) */
+.cal-fragility-section { }
+.cal-fragility-list { display: flex; flex-direction: column; gap: var(--size--2); }
+.cal-fragility-row {
+    display: flex; align-items: center; gap: var(--size--2);
+    padding: var(--size--2) var(--size--2); background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+    border-radius: var(--border-radius-1); font-size: var(--font-size--1);
+}
+.cal-fragility-target { font-family: var(--font-mono); font-weight: 600; color: var(--_ink); }
+.cal-fragility-status {
+    font-size: var(--font-size--2); font-weight: 700; text-transform: uppercase; letter-spacing: var(--font-letter-spacing-2);
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-3);
+}
+.cal-fragility-status--robust { color: var(--success-text); background: color-mix(in oklab, var(--brand-success-0) 12%, transparent); }
+.cal-fragility-status--fragile { color: var(--warning-text); background: color-mix(in oklab, var(--brand-warning-0) 12%, transparent); }
+.cal-fragility-status--mushy { color: var(--danger-text); background: color-mix(in oklab, var(--brand-danger-0) 12%, transparent); }
+.cal-fragility-confusers { font-family: var(--font-mono); color: var(--_ink-dim); }
+.cal-fragility-detail { margin-left: auto; font-size: var(--font-size--2); color: var(--_ink-dim); }
+
+/* Drill recommendations */
+.cal-drill-section { }
+.cal-drill-list { display: flex; flex-wrap: wrap; gap: var(--size--2); }
+.cal-drill-row {
+    display: flex; align-items: center; gap: var(--size--2);
+    padding: var(--size--2) var(--size--2); background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3);
+    border-radius: var(--border-radius-1); font-size: var(--font-size--2);
+}
+.cal-drill-command { font-family: var(--font-mono); font-weight: 500; color: var(--_ink); }
+.cal-drill-group { color: var(--_ink-dim); font-size: var(--font-size--2); }
+.cal-drill-reason {
+    font-size: var(--font-size--2); font-weight: 600; text-transform: uppercase;
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-0);
+}
+.cal-drill-action {
+    margin-left: auto; padding: var(--size--2) var(--size--2) !important; font-size: var(--font-size--2) !important;
+    color: var(--accent-text); border-color: color-mix(in oklab, var(--brand-accent-0) 30%, transparent);
+}
+.cal-drill-action:hover { background: color-mix(in oklab, var(--brand-accent-0) 10%, transparent); border-color: var(--brand-accent-0); }
+.cal-drill-reason--never_tested { background: var(--neutral-3); color: var(--_ink-dim); }
+.cal-drill-reason--low_accuracy { background: color-mix(in oklab, var(--brand-danger-0) 10%, transparent); color: var(--danger-text); }
+.cal-drill-reason--confused_pair { background: color-mix(in oklab, var(--brand-warning-0) 10%, transparent); color: var(--warning-text); }
+.cal-drill-reason--stale { background: color-mix(in oklab, var(--brand-cat-user-0) 10%, transparent); color: var(--_ink); }
+
+.calibration-idle { display: flex; flex-direction: column; gap: var(--size-7); }
+.hero-section { background: linear-gradient(135deg, color-mix(in oklab, var(--brand-accent-0) 8%, transparent) 0%, transparent 100%); border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-4); padding: var(--size-7); text-align: center; }
+.hero-section h2 { margin-bottom: var(--size--2); }
+.hero-section p { color: var(--_ink-dim); margin-bottom: var(--size-3); max-width: 420px; margin-left: auto; margin-right: auto; }
+.cal-actions { display: flex; flex-direction: column; gap: var(--size--2); margin-top: var(--size--2); }
+.cal-actions__primary { display: flex; gap: var(--size--2); align-items: center; }
+.cal-start-btn { padding: var(--size--2) var(--size-3); }
+.cal-hint { color: var(--_ink-dim); font-size: var(--font-size--1); }
+.cal-hint--block { display: block; margin-bottom: var(--size--2); }
+.cal-groups { margin-top: var(--size--2); }
+.cal-group-chips { display: flex; flex-wrap: wrap; gap: var(--size--2); }
+.cal-group-chip { padding: var(--size--2) var(--size--2); font-size: var(--font-size--1); }
+.cal-realistic-section { margin-top: var(--size--2); padding-top: var(--size--2); border-top: var(--border-width-0) solid var(--neutral-variant-3); }
+.cal-realistic-intro { color: var(--_ink-dim); font-size: var(--font-size--2); margin: 0 0 var(--size--2); }
+.cal-chip-realistic { display: inline-flex; align-items: center; gap: var(--size--2); }
+.cal-chip-mode-badge {
+    display: inline-block;
+    padding: var(--size--2) var(--size--2);
+    font-size: var(--font-size--2);
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--warning-text);
+    border: var(--border-width-0) solid var(--brand-warning-0);
+    border-radius: var(--border-radius-0);
+}
+.cal-section-heading { margin-bottom: var(--size--2); }
+.cal-section-desc { color: var(--_ink-dim); font-size: var(--font-size--2); margin-bottom: var(--size--2); }
+.history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--size-0); }
+.cal-session-card { background: var(--neutral-2); --_ink: var(--neutral-2-on); --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-3); padding: var(--size-0); }
+.cal-session-card__header { display: flex; justify-content: space-between; margin-bottom: var(--size--2); font-size: var(--font-size--2); color: var(--_ink-dim); }
+.cal-session-card__source { text-transform: capitalize; }
+.cal-session-card__score { font-size: var(--font-size-2); font-weight: 700; color: var(--_ink); }
+.cal-session-card__footer { margin-top: var(--size--2); font-size: var(--font-size--2); font-family: var(--font-mono); color: var(--_ink-dim); }
+
+/* --- Unified command catalog (idle screen) --- */
+.cal-intro { color: var(--_ink-dim); font-size: var(--font-size--1); margin-bottom: var(--size--2); }
+.cal-intro strong { color: var(--_ink); font-weight: 600; }
+.cal-toolbar { display: flex; gap: var(--size--2); margin-bottom: var(--size--2); flex-wrap: wrap; }
+.cal-toolbar-btn { padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-1); font-size: var(--font-size--1); cursor: pointer; }
+
+/* Auto-advance switch (the platform's <bk-toggle> in bare mode; this just lays
+   out the label + switch — the control brings its own styling). */
+.cal-autoadvance { display: inline-flex; align-items: center; gap: var(--size--2); margin-left: auto; cursor: pointer; }
+.cal-autoadvance-label { font-size: var(--font-size--1); color: var(--_ink-dim); white-space: nowrap; }
+
+.cal-catalog-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    gap: var(--size-0);
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+}
+/* Active multi-target command: insert the group rail as a middle column. */
+.cal-catalog-layout--grouped { grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.4fr); }
+/* Was @media (max-width: 720px). It happened to work — inside an iframe the
+   viewport IS the pane — but it silently means something different if this
+   markup is ever rendered outside one. The container query says what was
+   actually meant: stack when MY pane is narrow. */
+@container settings-pane (max-width: 720px) { .cal-catalog-layout, .cal-catalog-layout--grouped { grid-template-columns: 1fr; } }
+
+/* --- Group rail (second column: the active command's expanded targets) --- */
+.cal-group-rail { display: flex; flex-direction: column; min-width: 0; border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-3); overflow: hidden; }
+.cal-group-rail__header {
+    position: sticky; top: 0; z-index: 1;
+    display: flex; align-items: baseline; gap: var(--size--2);
+    padding: var(--size--2) var(--size--2); font-size: var(--font-size--2); font-weight: 600; color: var(--_ink);
+    background: var(--neutral-2); border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-group-rail__pos { margin-left: auto; color: var(--_ink-dim); font-weight: 400; }
+/* Rows are the platform's bk-list; the rail owns its height and scroll, and
+   says how far the walk has come: targets ahead are faint, ones done are dim. */
+.cal-group-rail__list { max-height: 60vh; overflow-y: auto; }
+.cal-grouprail-item--upcoming { color: var(--_ink-dim); opacity: 0.7; }
+.cal-grouprail-item--done { color: var(--_ink-dim); }
+.cal-grouprail-sigs { display: inline-flex; gap: var(--size--2); }
+.cal-grouprail-sig { font-weight: 700; }
+.cal-grouprail-sig--pass { color: var(--success-text); }
+.cal-grouprail-sig--fail { color: var(--warning-text); }
+.cal-grouprail-sig--skip { color: var(--_ink-dim); }
+
+.cal-catalog { min-height: 0; overflow-y: auto; border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-3); padding: var(--size--2); }
+.cal-catalog-filter {
+    position: sticky; top: -8px; z-index: 2;
+    box-sizing: border-box; width: 100%; margin-bottom: var(--size--2);
+    padding: var(--size--2) var(--size--2); font-size: var(--font-size--1); border-radius: var(--border-radius-1);
+    background: var(--neutral-2); border: var(--border-width-0) solid var(--neutral-variant-3); color: var(--_ink);
+}
+.cal-catalog-filter::placeholder { color: var(--_ink-dim); }
+.cal-catalog-filter:focus { border-color: var(--brand-accent-0); outline: none; }
+.cal-cat-group { margin-bottom: var(--size--2); }
+.cal-cat-group:last-child { margin-bottom: 0; }
+.cal-cat-group__header {
+    display: flex; align-items: center; gap: var(--size--2); padding: var(--size--2) var(--size--2) var(--size--2);
+    position: sticky; top: -8px; background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim); z-index: 1;
+    border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+}
+.cal-cat-group__owner { font-size: var(--font-size--2); font-weight: 700; text-transform: capitalize; color: var(--_ink); }
+.cal-cat-group__rollup { font-size: var(--font-size--2); color: var(--_ink-dim); margin-right: auto; }
+.cal-cat-group__test {
+    font-size: var(--font-size--2); padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-0); cursor: pointer;
+    background: transparent; border: var(--border-width-0) solid var(--neutral-variant-3); color: var(--accent-text);
+}
+.cal-cat-group__test:hover { border-color: var(--brand-accent-0); }
+
+.cal-cat-row {
+    display: flex; flex-direction: column; align-items: stretch; gap: 0; width: 100%;
+    padding: var(--size--2) var(--size--2); margin-top: var(--size--2); border-radius: var(--border-radius-1); cursor: pointer;
+    background: transparent; border: var(--border-width-0) solid transparent; text-align: left;
+}
+.cal-cat-row:hover { background: var(--neutral-2); }
+.cal-cat-row--selected { background: color-mix(in oklab, var(--brand-accent-0) 12%, transparent); border-color: var(--brand-accent-0); }
+.cal-cat-row__line { display: flex; align-items: center; gap: var(--size--2); min-width: 0; width: 100%; }
+/* Combo tree: a mode entry opens its gated moves — nested rows on a
+   rail, each carrying its one-breath form. */
+.cal-cat-row__opens { color: var(--_ink-dim); font-size: var(--font-size--2); }
+.cal-cat-kids {
+    margin: 0 0 var(--size--2) var(--size-0);
+    border-left: var(--border-width-0) solid var(--neutral-variant-3);
+    display: flex;
+    flex-direction: column;
+}
+.cal-cat-kid {
+    display: flex; align-items: baseline; gap: var(--size--2); width: 100%;
+    padding: 4px var(--size--2); border: none; background: transparent;
+    cursor: pointer; text-align: left; font-size: var(--font-size--2);
+    border-radius: var(--border-radius-0);
+}
+.cal-cat-kid:hover { background: var(--neutral-2); }
+.cal-cat-kid--selected { background: color-mix(in oklab, var(--brand-accent-0) 12%, transparent); }
+.cal-cat-kid__word { font-family: var(--font-mono); font-weight: 600; color: var(--_ink); flex-shrink: 0; }
+.cal-cat-kid__desc { color: var(--_ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cal-cat-kid__breath { margin-left: auto; flex-shrink: 0; color: var(--_ink-dim); font-size: var(--font-size--2); }
+.cal-cat-kid__acc { flex-shrink: 0; font-family: var(--font-mono); color: var(--_ink-dim); }
+.cal-cat-kid--warn .cal-cat-kid__acc { color: var(--warning-text); }
+
+/* Move-list row: what saying this DOES, under the phrase. */
+.cal-cat-row__desc {
+    display: block;
+    font-size: var(--font-size--2);
+    color: var(--_ink-dim);
+    line-height: 1.45;
+    margin-top: 2px;
+    text-align: left;
+}
+.cal-cat-row__pattern { flex: 1; min-width: 0; font-size: var(--font-size--1); color: var(--_ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-cat-row__acc { font-size: var(--font-size--2); font-variant-numeric: tabular-nums; color: var(--_ink-dim); min-width: 36px; text-align: right; }
+.cal-cat-row--warn .cal-cat-row__acc { color: var(--warning-text); }
+
+.cal-tier-badge {
+    font-size: var(--font-size--2); text-transform: uppercase; letter-spacing: var(--font-letter-spacing-1);
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-0); font-weight: 600;
+    background: var(--neutral-3); color: var(--_ink-dim);
+}
+/* The tier's hue is the chip's ground; its text is the surface ink, as the
+   platform chips are -- 70% of a hue as text measured 2.6-3.9:1 on light. */
+.cal-tier-badge--mode_gated { background: color-mix(in oklab, var(--brand-cat-log-0) 18%, transparent); color: var(--_ink); }
+.cal-tier-badge--dynamic { background: color-mix(in oklab, var(--brand-danger-0) 16%, transparent); color: var(--_ink); }
+.cal-tier-badge--slotted { background: color-mix(in oklab, var(--brand-cat-amber-0) 16%, transparent); color: var(--_ink); }
+
+.cal-detail-pane { position: sticky; top: 8px; }
+.cal-detail-empty {
+    border: var(--border-width-0) dashed var(--neutral-variant-3); border-radius: var(--border-radius-3); padding: var(--size-3) var(--size-0);
+    color: var(--_ink-dim); font-size: var(--font-size--1); text-align: center;
+}
+.cal-detail-empty strong { color: var(--_ink); }
+.cal-detail-card { background: var(--neutral-2); --_ink: var(--neutral-2-on); --_ink-dim: var(--neutral-2-dim); border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-3); padding: var(--size-0); }
+.cal-detail-card__pattern { font-size: var(--font-size-1); font-weight: 700; color: var(--_ink); margin-bottom: var(--size--2); }
+.cal-detail-card__context { display: flex; align-items: center; gap: var(--size--2); flex-wrap: wrap; margin-bottom: var(--size--2); }
+.cal-detail-owner { font-size: var(--font-size--2); color: var(--_ink-dim); text-transform: capitalize; }
+.cal-detail-context-label { font-size: var(--font-size--2); color: var(--_ink-dim); }
+.cal-detail-category {
+    font-size: var(--font-size--2); text-transform: uppercase; letter-spacing: var(--font-letter-spacing-1);
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-0); color: var(--_ink-dim);
+    background: var(--neutral-3);
+    --_ink: var(--neutral-3-on);
+    --_ink-dim: var(--neutral-3-dim);
+}
+.cal-detail-desc { font-size: var(--font-size--1); line-height: var(--font-line-height--3); color: var(--_ink-dim); margin: 0 0 var(--size--2); }
+.cal-detail-stats { display: flex; flex-direction: column; gap: var(--size--2); margin-bottom: var(--size-0); }
+.cal-detail-stat { display: flex; justify-content: space-between; align-items: baseline; gap: var(--size--2); font-size: var(--font-size--1); }
+.cal-detail-stat__label { color: var(--_ink-dim); }
+.cal-detail-stat__value { color: var(--_ink); font-weight: 500; }
+/* --- Persistent live-catalog surface (sidebar always on; right pane = trial) --- */
+.calibration-surface {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-0);
+    /* Full-height workbench — the stage never scrolls away from the
+       hold-and-speak loop. 100vh is the iframe's own viewport; the offset
+       is frame padding. Columns scroll internally. */
+    height: calc(100vh - 40px);
+    min-height: 420px;
+}
+.cal-banner {
+    display: flex; align-items: center; gap: var(--size--2); flex-wrap: wrap;
+    padding: var(--size--2) var(--size--2); border-radius: var(--border-radius-3);
+    background: color-mix(in oklab, var(--brand-success-0) 10%, transparent); border: var(--border-width-0) solid color-mix(in oklab, var(--brand-success-0) 30%, transparent);
+}
+.cal-banner-text { font-size: var(--font-size--1); color: var(--_ink); font-weight: 500; }
+.cal-banner-dismiss { margin-left: auto; }
+.cal-trial-empty {
+    border: var(--border-width-0) dashed var(--neutral-variant-3); border-radius: var(--border-radius-3); padding: var(--size-4) var(--size-0);
+    color: var(--_ink-dim); font-size: var(--font-size--1); text-align: center; line-height: var(--font-line-height--3);
+}
+.cal-trial-empty strong { color: var(--_ink); }
+/* The active command's health readout, shown above the live trial card. */
+.cal-detail-card--live { margin-bottom: var(--size--2); border-color: var(--brand-accent-0); }
+
+/* --- Live trial pane (right column of the catalog layout) --- */
+.cal-trial-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+
+/* The miss anatomy: the newest failed hold, read as a sentence —
+   what you were saying against what the engine heard, with the clip one
+   scroll below. Danger-tinted frame; the heard text carries the colour. */
+.cal-miss {
+    margin-top: var(--size--2);
+    border: var(--border-width-0) solid color-mix(in oklab, var(--brand-danger-0) 35%, transparent);
+    border-radius: var(--border-radius-1);
+    background: color-mix(in oklab, var(--brand-danger-0) 5%, transparent);
+    padding: var(--size--2) var(--size-0);
+}
+.cal-miss__head {
+    font-size: var(--font-size--2);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--font-letter-spacing-2);
+    color: var(--danger-text);
+    margin-bottom: var(--size--2);
+}
+.cal-miss__pair { display: flex; align-items: baseline; gap: var(--size--2); flex-wrap: wrap; }
+.cal-miss__k { font-size: var(--font-size--2); color: var(--_ink-dim); }
+.cal-miss__said, .cal-miss__heard {
+    font-family: var(--font-mono);
+    font-size: var(--font-size--1);
+    font-weight: 600;
+    background: var(--neutral-2);
+    --_ink: var(--neutral-2-on);
+    --_ink-dim: var(--neutral-2-dim);
+    border-radius: var(--border-radius-0);
+    padding: 1px var(--size--2);
+}
+.cal-miss__heard { color: color-mix(in oklab, var(--brand-danger-0) 75%, var(--_ink)); }
+.cal-miss__arrow { color: var(--_ink-dim); }
+.cal-miss__note { font-size: var(--font-size--2); color: var(--_ink-dim); margin-top: var(--size--2); line-height: 1.5; }
+
+/* The working set: the selected command's clips, docked under the stage.
+   The global library lives on the Recordings tab. */
+.cal-docked { margin-top: var(--size-0); border-top: var(--border-width-0) solid var(--neutral-variant-3); padding-top: var(--size--2); }
+.cal-docked__head { font-size: var(--font-size--2); color: var(--_ink-dim); margin-bottom: var(--size--2); }
+.cal-docked__cmd { font-family: var(--font-mono); color: var(--_ink); }
+
+/* The slim row that replaced the in-tab library: a count and the door. */
+.cal-library-link {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--size--2);
+    font-size: var(--font-size--2);
+    color: var(--_ink-dim);
+    padding: var(--size--2) var(--size--2) 0;
+}
+.cal-library-link__go { margin-left: auto; color: var(--accent-text); text-decoration: none; }
+
+/* Invisible liveness heartbeat: a looping animation whose iteration event the
+   calibration page posts as a ping. 0×0 so it never affects layout. */
+.cal-heartbeat { position: absolute; width: 0; height: 0; overflow: hidden; animation: cal-heartbeat calc(var(--anim-duration-4) * 6) var(--anim-ease-linear) infinite; }
+@keyframes cal-heartbeat { to { transform: rotate(1turn); } }
+
+/* --- HUD appearance tab --------------------------------------------------- */
+
+/* Slider readout: the current value, right-aligned in a fixed gutter so the
+   three sliders' numbers line up whatever they read. */
+.hud-slider-value {
+    font-size: var(--font-size--2);
+    color: var(--_ink-dim);
+    min-width: 32px;
+    text-align: right;
+}
+.hud-slider {
+    width: 120px;
+    accent-color: var(--brand-accent-0);
+}
+
+/* The Channels table starts a second section inside the same bk-table. */
+.hud-channels-header { margin-top: var(--size-3); }
+.hud-channel-desc {
+    font-size: var(--font-size--2);
+    color: var(--_ink-dim);
+}
+/* Same shape as .value-cell but with no gap, because there is one control in
+   it — stating gap: 8px here would be a computed change with nothing to show
+   for it. */
+.hud-channel-cell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    text-align: right;
+}
+/* select is styled by tag in settings-components.css at (0,0,1), so a class
+   wins — but the background differs (--bg-input here, --surface there), so it
+   has to be stated. */
+.hud-channel-select {
+    padding: var(--size--2) var(--size--2);
+    border-radius: var(--border-radius-0);
+    border: var(--border-width-0) solid var(--neutral-variant-3);
+    background: var(--neutral-3);
+    --_ink: var(--neutral-3-on);
+    --_ink-dim: var(--neutral-3-dim);
+    color: var(--_ink);
+    font-size: var(--font-size--1);
+}
+
+/* --- Command test result -------------------------------------------------- */
+
+/* What the phrase in the Rules tab's test box matched, or did not. Scoped to
+   the id the component already carries, so the parts inside need only say which
+   part they are. */
+#test-result {
+    /* Nothing typed yet. */
+    & .tr-empty {
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        padding: var(--size--2) 0;
+    }
+
+    & .tr-body { padding: var(--size--2) 0; }
+
+    /* The verdict line: a tick or a cross, then who owns the command or what
+       was typed. */
+    & .tr-head {
+        display: flex;
+        align-items: center;
+        gap: var(--size--2);
+        margin-bottom: var(--size--2);
+    }
+    & .tr-head--nomatch { margin-bottom: var(--size--2); }
+    & .tr-verdict-ok { color: var(--success-text); font-weight: 600; }
+    & .tr-verdict-no { color: var(--danger-text); }
+    & .tr-owner { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    & .tr-phrase { font-size: var(--font-size--2); color: var(--_ink-dim); }
+
+    /* The breakdown beneath it: what was consumed, which action, which tags. */
+    & .tr-detail { font-size: var(--font-size--2); padding-left: var(--size--2); }
+    & .tr-row { margin-bottom: var(--size--2); }
+    /* The label of one line, against its value. */
+    & .tr-key { color: var(--_ink-dim); }
+    & .tr-val { color: var(--_ink); }
+    & .tr-arg { margin-left: var(--size--2); }
+    & .tr-arg-name { color: var(--accent-text); }
+    & .tr-tag { margin-left: var(--size--2); font-size: var(--font-size--2); }
+
+    /* Typed so far matches a prefix but no whole command. */
+    & .tr-partial {
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        padding-left: var(--size--2);
+    }
+}
+
+/* --- Alphabet (phonetics) tab: the letter grid ----------------------------- */
+
+.ph-legend {
+    font-size: var(--font-size--2);
+    color: var(--_ink-dim);
+    margin-bottom: var(--size--2);
+}
+
+/* The drawer's codeword slot reuses the table-era editable-cell/edit-inline
+   idiom; this just keeps it from flexing the whole drawer row. */
+.ph-drawer-word { min-width: 0; }
+
+/* --- Dictation tab -------------------------------------------------------- */
+
+.dict-tab {
+    /* Sections are <bk-card>s: the card header
+       carries each section's title and verb, so the old model/section bars are
+       gone. What remains here is content styling inside the card bodies. */
+    & .dict-section-note {
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        margin-bottom: var(--size--2);
+    }
+
+    /* Styles: what each style does, on one real sentence, above the per-app table.
+       11rem fits all four styles in one row at a normal settings width and still
+       stacks them on a narrow window; 14rem left Email alone on a second row. */
+    & .dict-style-examples {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+        gap: var(--size--2);
+        margin-bottom: var(--size--1);
+    }
+    & .dict-style-examples > .dict-style-box {
+        display: flex;
+        flex-direction: column;
+        gap: var(--size--3);
+        padding: var(--size--2);
+        border-radius: var(--border-radius-1);
+        background: var(--scrim-2);
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        text-align: left;
+        border: var(--border-width-0) solid transparent;
+        cursor: pointer;
+    }
+    & .dict-style-examples > .dict-style-box:hover { border-color: var(--neutral-variant-3); }
+    /* The default: the accent edge, the same accent .segmented-btn fills with. */
+    & .dict-style-examples > .dict-style-box.is-active { border-color: var(--brand-accent-0); }
+    & .dict-style-examples strong { color: var(--_ink); font-weight: 600; }
+    /* A small heading inside a section: "Default for every app", "Exceptions". */
+    & .dict-mini-head {
+        font-size: var(--font-size--2);
+        font-weight: 600;
+        color: var(--_ink-dim);
+        margin: var(--size--2) 0 var(--size--3);
+    }
+
+    /* The styles table's Add row: app, style, Add. */
+    & .dict-add-app {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--size--2);
+        margin-top: var(--size--2);
+    }
+    & .dict-add-app select { font-size: var(--font-size--1); }
+    /* A settings row's description, under its label (settingRow). */
+    & .dict-row-desc { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    & .dict-row-hint { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    & .dict-row-value { font-size: var(--font-size--1); }
+    /* A section of a card: its name on the left and, for a section that needs
+       a downloaded model, the model's state on the right (modelStatus). It
+       anchors the progress bar drawn along its bottom edge. */
+    & .dict-subhead {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: var(--size--2);
+        margin: var(--size-0) 0 var(--size--2);
+        padding-bottom: var(--size--2);
+        border-bottom: var(--border-width-0) solid var(--neutral-variant-3);
+    }
+    & .dict-subhead-label { font-size: var(--font-size--1); font-weight: 600; }
+    & .dict-model-note { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    /* A section whose model is missing (needsModelClass): readable, so it
+       still shows what the download gives, and inert. Pointer events stop
+       clicks; the controls are also aria-disabled or disabled, which stops
+       the keyboard and tells a screen reader why. */
+    & .dict-needs-model {
+        opacity: 0.45;
+        pointer-events: none;
+        user-select: none;
+    }
+    /* Only the width is per-render, as --progress (see .model-progress). */
+    & .dict-model-bar {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: calc(-1 * var(--border-width-0));
+        height: 3px;
+        background: var(--neutral-3);
+        overflow: hidden;
+    }
+    & .dict-model-bar-fill {
+        display: block;
+        height: 100%;
+        width: var(--progress, 0%);
+        background: var(--brand-accent-0);
+        transition: width var(--anim-duration-4);
+    }
+
+    /* Words it should know: one row per word, its fixes in a quiet line under it. */
+    & .dict-words { list-style: none; margin: 0 0 var(--size--2); padding: 0; }
+    & .dict-word {
+        display: flex;
+        align-items: center;
+        gap: var(--size--2);
+        padding: var(--size--2) 0;
+        border-top: var(--border-width-0) solid var(--neutral-variant-3);
+    }
+    & .dict-word:first-child { border-top: 0; }
+    & .dict-word-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    & .dict-word-name { font-weight: 500; color: var(--_ink); }
+    & .dict-word-fixes { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    & .dict-word-heard { font-style: italic; }
+    & .dict-fix-x { font-size: var(--font-size--2); padding: 0 4px; }
+
+    /* Advanced: the machinery, folded under one summary line. */
+    & .dict-advanced { margin-top: var(--size-1); }
+    & .dict-advanced-body { display: flex; flex-direction: column; gap: var(--size--2); padding-top: var(--size--2); }
+    & .dict-advanced-h { margin: var(--size-0) 0 0; font-size: var(--font-size--1); font-weight: 600; color: var(--_ink); }
+
+    /* Corrections: a fixed gutter for the enabled toggle, an arrow between the
+       two halves of the rule, and a fixed column for the row's actions. */
+    & .dict-corr-gutter { width: 40px; }
+    & .dict-corr-arrow {
+        width: 24px;
+        text-align: center;
+        color: var(--_ink-dim);
+    }
+    & .dict-corr-actions { width: 60px; text-align: center; }
+    /* Marks a rule that shipped with BranchKit rather than one the user wrote. */
+    & .dict-shipped-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--_ink-dim);
+        margin-right: var(--size--2);
+        vertical-align: middle;
+    }
+    & .dict-corr-actions-bar {
+        margin-top: var(--size--2);
+        display: flex;
+        gap: var(--size--2);
+        align-items: center;
+    }
+    & .dict-confirm { display: inline-flex; gap: var(--size--2); }
+
+    /* Try a phrase against the correction rules without dictating it. */
+    & .dict-test { margin-top: var(--size--2); }
+    & .dict-test-label {
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        margin-bottom: var(--size--2);
+    }
+    & .dict-test-row { display: flex; gap: var(--size--2); align-items: center; }
+    & input[type="text"].dict-test-input {
+        flex: 1;
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+        color: var(--_ink);
+    }
+    & .dict-test-out {
+        margin-top: var(--size--2);
+        padding: var(--size--2) var(--size--2);
+        background: var(--neutral-4);
+        --_ink: var(--neutral-4-on);
+        --_ink-dim: var(--neutral-4-dim);
+        border-radius: var(--border-radius-0);
+        font-family: var(--font-mono);
+        font-size: var(--font-size--2);
+    }
+}
+
+/* --- Models tab ----------------------------------------------------------- */
+
+.models-tab {
+    /* One model: name and description on the left, actions on the right. */
+    & .model-row {
+        display: flex;
+        align-items: center;
+        gap: var(--size--2);
+    }
+    & .model-row--spaced { margin-bottom: var(--size--2); }
+    & .model-actions { display: flex; align-items: center; gap: var(--size--2); }
+    & .model-name { font-size: var(--font-size--1); }
+    & .model-title { font-size: var(--font-size--1); font-weight: 500; }
+    & .model-desc { font-size: var(--font-size--2); color: var(--_ink-dim); }
+
+    /* Shown when nothing is downloaded yet: what the two engines are and a
+       button that fetches both. */
+    & .model-empty { padding: var(--size-3); }
+    & .model-empty-title {
+        font-size: var(--font-size-0);
+        font-weight: 600;
+        margin-bottom: var(--size--2);
+    }
+    & .model-empty-note {
+        font-size: var(--font-size--1);
+        color: var(--_ink-dim);
+        margin-bottom: var(--size-3);
+    }
+    & .model-card {
+        background: var(--neutral-4);
+        --_ink: var(--neutral-4-on);
+        --_ink-dim: var(--neutral-4-dim);
+        border-radius: var(--border-radius-3);
+        padding: var(--size-0);
+        margin-bottom: var(--size-0);
+    }
+    & .model-card-label {
+        font-size: var(--font-size--2);
+        font-weight: 600;
+        margin-bottom: var(--size--2);
+        color: var(--_ink-dim);
+    }
+    & .model-footnote {
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        margin-top: var(--size--2);
+    }
+
+    /* Download progress. Only the width is per-render, and it arrives as
+       --progress rather than as a whole `width:` rule — an inline width would
+       beat every rule here, an inline VALUE does not. Same shape as
+       --stat-value-color on the calibration tab. */
+    & .model-progress-head {
+        display: flex;
+        justify-content: space-between;
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        margin-bottom: var(--size--2);
+    }
+    & .model-progress {
+        height: 6px;
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+        border-radius: var(--border-radius-0);
+        overflow: hidden;
+    }
+    & .model-progress-fill {
+        height: 100%;
+        width: var(--progress, 0%);
+        background: var(--brand-accent-0);
+        border-radius: var(--border-radius-0);
+        transition: width var(--anim-duration-4);
+    }
+
+    /* Per-engine sections below the empty state. */
+    & .model-section { padding: var(--size-0); }
+    & .model-section-title {
+        font-size: var(--font-size--1);
+        font-weight: 600;
+        margin-bottom: var(--size--2);
+    }
+    & .model-section-note { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    & .model-divider { border-top: var(--border-width-0) solid var(--neutral-variant-3); padding: var(--size-0); }
+    & .model-block { margin-bottom: var(--size-0); }
+
+    & .model-lang-label { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    & .model-lang-select {
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+        color: var(--_ink);
+        font-size: var(--font-size--1);
+    }
+
+    & .model-btn-row { display: flex; gap: var(--size--2); }
+
+    /* Compare on my voice: a bar with the run's state, a card per
+       command model, then the recordings the models heard differently. */
+    & .cmp-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--size--2);
+        margin-bottom: var(--size-0);
+        font-size: var(--font-size--1);
+    }
+    & .cmp-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+        gap: var(--size--1);
+        margin-bottom: var(--size-0);
+    }
+    & .cmp-cards .model-card { display: flex; flex-direction: column; gap: var(--size--3); margin-bottom: 0; }
+    & .cmp-best { outline: var(--border-width-1) solid var(--brand-success-0); }
+    & .cmp-best-label { color: var(--success-text); }
+    & .cmp-score { font-size: var(--font-size-2); font-weight: 600; }
+    & .cmp-score small { font-size: var(--font-size--1); font-weight: 400; color: var(--_ink-dim); }
+    & .cmp-actions { margin-top: var(--size--2); }
+    & .cmp-source { user-select: text; overflow-wrap: anywhere; }
+    & .cmp-section { margin-top: var(--size-1); }
+    & .cmp-say { margin-bottom: var(--size-0); }
+    & .cmp-answer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--size--2);
+        padding-bottom: var(--size--2);
+        font-size: var(--font-size--1);
+    }
+    & .cmp-other { width: auto; flex: 0 1 14rem; min-width: min(10rem, 100%); }
+    & .cmp-dis { display: flex; flex-direction: column; font-size: var(--font-size--1); }
+    & .cmp-row {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) repeat(auto-fit, minmax(0, 1fr));
+        grid-auto-flow: column;
+        gap: var(--size--2);
+        align-items: center;
+        padding: var(--size--2) 0;
+        border-top: var(--border-width-0) solid var(--neutral-variant-3);
+    }
+    & .cmp-head { font-weight: 600; color: var(--_ink-dim); border-top: none; }
+    & .cmp-said { display: flex; align-items: center; gap: var(--size--2); min-width: 0; }
+    & .cmp-audio { height: 2rem; width: 9rem; flex: none; }
+    & .cmp-ok { color: var(--success-text); }
+    & .cmp-bad { color: var(--danger-text); }
+    & .cmp-heard { color: var(--_ink-dim); margin-left: var(--size--3); }
+}
+
+/* --- Rule editor drawer ---------------------------------------------------- */
+
+/* Scoped to the drawer, and that is load-bearing rather than tidy. Every rule
+   below would otherwise be a bare class at (0,1,0), and settings-components.css
+   styles input[type="text"] at (0,1,1) — so the form's inputs would take the
+   shared rule's 13px and page font instead of their own. Nesting under
+   .editor-pane makes each selector two classes, which wins. Measured: without
+   it, .ef-slot-input renders at 13px in the page face and full width.
+   (The scope read .editor-drawer until 2026-09-16 while the form had been
+   .editor-pane since it docked into the inspector — every rule below was
+   dead and the form rendered in the shared sheet's defaults.) */
+.editor-pane {
+
+    /* Nearly every control in this form is the same box at a different size: a 4px
+       radius, the border token, the input ground and the text colour. Only padding,
+       type size and whether it stretches actually vary, so those are what a call
+       site says. */
+    .ef-box {
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+        color: var(--_ink);
+        padding: var(--ef-pad, 6px 8px);
+        font-size: var(--ef-size, 13px);
+    }
+    .ef-box--wide { width: 100%; }
+    .ef-box--grow { flex: 1; }
+    .ef-box--mono { font-family: var(--font-mono); }
+    .ef-box--resize { resize: vertical; }
+    .ef-p3-2 { --ef-pad: 3px 2px; }
+    .ef-p3-6 { --ef-pad: 3px 6px; }
+    .ef-p4-6 { --ef-pad: 4px 6px; }
+    .ef-p5-8 { --ef-pad: 5px 8px; }
+    .ef-s10 { --ef-size: 10px; }
+    .ef-s12 { --ef-size: 12px; }
+    .ef-dim-text { color: var(--_ink-dim); }
+    .ef-auto { width: auto; }
+    .ef-min140 { min-width: 140px; }
+    .ef-minh80 { min-height: 80px; }
+    .ef-mb6 { margin-bottom: var(--size--2); }
+
+    /* Buttons. Two grounds — a bordered transparent one and the accent fill — with
+       the same radius and border as the boxes above. */
+    .ef-btn {
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        background: transparent;
+        padding: var(--ef-pad, 4px 8px);
+        font-size: var(--ef-size, 12px);
+        cursor: pointer;
+        color: var(--_ink-dim);
+    }
+    .ef-btn--accent { color: var(--accent-text); }
+    .ef-btn--filled {
+        border: none;
+        background: var(--accent-fill);
+        color: var(--brand-accent-0-on);
+        font-weight: 600;
+    }
+    .ef-btn--nowrap { white-space: nowrap; }
+    .ef-btn--input-bg { background: var(--neutral-3); --_ink: var(--neutral-3-on); --_ink-dim: var(--neutral-3-dim); }
+    /* Two dashed buttons: one keeps the 4px box radius, one is a pill. */
+    .ef-btn--dashed-sq { border-style: dashed; }
+    .ef-btn--dashed { border-style: dashed; border-radius: var(--radius-pill); }
+    .ef-btn--disabled { cursor: not-allowed; opacity: 0.5; }
+    .ef-btn--bare { border: none; background: transparent; line-height: var(--font-line-height--3); }
+    .ef-p1-6 { --ef-pad: 1px 6px; }
+    .ef-p1-8 { --ef-pad: 1px 8px; }
+    .ef-p2-6 { --ef-pad: 2px 6px; }
+    .ef-p2-8 { --ef-pad: 2px 8px; }
+    .ef-p4-10 { --ef-pad: 4px 10px; }
+    .ef-p4-12 { --ef-pad: 4px 12px; }
+    .ef-p4-14 { --ef-pad: 4px 14px; }
+    .ef-p6-10 { --ef-pad: 6px 10px; }
+    .ef-p6-16 { --ef-pad: 6px 16px; }
+    .ef-p0-2 { --ef-pad: 0 2px; }
+    .ef-s11 { --ef-size: 11px; }
+    .ef-s13 { --ef-size: 13px; }
+    .ef-s14 { --ef-size: 14px; }
+    .ef-mt6 { margin-top: var(--size--2); }
+
+    /* Labels and headings. */
+    .ef-label {
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        display: block;
+        margin-bottom: var(--size--2);
+    }
+    .ef-label--mb4 { margin-bottom: var(--size--2); }
+    .ef-label--mb6 { margin-bottom: var(--size--2); }
+    .ef-hint { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    .ef-hint--mb8 { margin-bottom: var(--size--2); }
+    .ef-hint--mt4 { margin-top: var(--size--2); }
+    .ef-hint--w20 { width: 20px; }
+    .ef-title { font-size: var(--font-size--1); font-weight: 600; }
+    .ef-subtitle { font-size: var(--font-size--2); font-weight: 600; margin-bottom: var(--size--2); }
+    .ef-subtitle--dim { color: var(--_ink-dim); }
+    .ef-rule-head {
+        margin: var(--size--2) 0 var(--size--2);
+        padding-top: var(--size--2);
+        border-top: var(--border-width-0) solid var(--neutral-variant-3);
+        font-size: var(--font-size--2);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: var(--font-letter-spacing-2);
+        color: var(--_ink-dim);
+    }
+    .ef-normal { font-weight: 400; }
+    .ef-normal-case { font-weight: 400; text-transform: none; }
+
+    /* Layout. */
+    .ef-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--size--2);
+    }
+    .ef-head--mb2 { margin-bottom: var(--size--2); }
+    .ef-head--mb4 { margin-bottom: var(--size--2); }
+    .ef-row { display: flex; gap: var(--size--2); align-items: center; }
+    .ef-row--8 { gap: var(--size--2); }
+    .ef-col { display: flex; flex-direction: column; gap: var(--size--2); }
+    .ef-col--6 { gap: var(--size--2); }
+    .ef-grid1 { display: grid; grid-template-columns: 1fr; gap: var(--size--2); margin-bottom: var(--size--2); }
+    .ef-grid2 { display: grid; grid-template-columns: auto 1fr; gap: var(--size--2); margin-bottom: var(--size--2); }
+    .ef-mb8 { margin-bottom: var(--size--2); }
+    .ef-mb8--rel { margin-bottom: var(--size--2); position: relative; }
+    .ef-mb12 { margin-bottom: var(--size--2); }
+    .ef-actions { display: flex; gap: var(--size--2); margin-top: var(--size--2); }
+    .ef-right { margin-top: var(--size--2); text-align: right; }
+    .ef-footer {
+        display: flex;
+        gap: var(--size--2);
+        justify-content: flex-end;
+        position: sticky;
+        bottom: 0;
+        background: var(--neutral-2);
+        --_ink: var(--neutral-2-on);
+        --_ink-dim: var(--neutral-2-dim);
+        padding: var(--size--2) 0;
+        margin-top: var(--size--2);
+    }
+
+    /* The phrase-slot chips and the picker they open. */
+    .ef-slots {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--size--2);
+        align-items: center;
+        min-height: 32px;
+        padding: var(--size--2);
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+    }
+    .ef-slots--bare {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--size--2);
+        align-items: center;
+        min-height: 28px;
+    }
+    .ef-slot { display: inline-flex; align-items: center; gap: var(--size--2); position: relative; }
+    /* One editable word in the phrase. Its width tracks the text it holds, so
+       --slot-w is set inline — a VALUE, not a rule, which is the difference that
+       keeps the rest of the box reachable from here. */
+    .ef-slot-input {
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+        color: var(--_ink);
+        font-size: var(--font-size--2);
+        font-family: var(--font-mono);
+        /* --slot-w counts characters; content-box keeps the padding from
+           eating two of them ("left" rendered as "le" under border-box). */
+        box-sizing: content-box;
+        width: var(--slot-w, 5ch);
+        min-width: 4ch;
+    }
+    /* An alternatives slot reads as a set rather than a word. */
+    .ef-slot-input--alt {
+        border-color: color-mix(in oklab, var(--brand-accent-0) 40%, transparent);
+        background: color-mix(in oklab, var(--brand-accent-0) 8%, transparent);
+    }
+    /* rgba(74, 158, 255, …) is the pre-token accent tint and stays literal. */
+    .ef-slot-alt {
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid color-mix(in oklab, var(--brand-accent-0) 40%, transparent);
+        background: color-mix(in oklab, var(--brand-accent-0) 10%, transparent);
+        color: var(--accent-text);
+        font-size: var(--font-size--2);
+    }
+    .ef-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--size--2);
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--radius-pill);
+        background: color-mix(in oklab, var(--brand-accent-0) 15%, transparent);
+        color: var(--accent-text);
+        font-size: var(--font-size--2);
+        white-space: nowrap;
+    }
+    .ef-chip-x { cursor: pointer; opacity: 0.7; font-size: var(--font-size--1); line-height: var(--font-line-height--3); }
+    /* The scrim is the menu's click-catcher and has to sit exactly one below
+       it, so it derives from the same token rather than naming its own.
+       Neither rule says display: none — the hidden state is the element's
+       inline style, which datastar removes to reveal; a class saying none
+       would win at that moment and the menu would never open. (These two
+       did say it until 2026-09-16, unnoticed while the whole scope was dead.) */
+    .ef-scrim { position: fixed; inset: 0; z-index: calc(var(--zindex-dropdown) - 1); }
+    .ef-menu {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 100%;
+        z-index: var(--zindex-dropdown);
+        background: var(--neutral-2);
+        --_ink: var(--neutral-2-on);
+        --_ink-dim: var(--neutral-2-dim);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        border-radius: var(--border-radius-1);
+        padding: var(--size--2) 0;
+        margin-bottom: var(--size--2);
+        max-height: 280px;
+        overflow-y: auto;
+        box-shadow: var(--shadow-4);
+    }
+    .ef-menu-search {
+        position: sticky;
+        top: -6px;
+        width: calc(100% - 16px);
+        margin: 0 var(--size--2) var(--size--2);
+        padding: var(--size--2) var(--size--2);
+        box-sizing: border-box;
+        background: var(--neutral-1);
+        --_ink: var(--neutral-1-on);
+        --_ink-dim: var(--neutral-1-dim);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        border-radius: var(--border-radius-0);
+        color: var(--_ink);
+        font-size: var(--font-size--2);
+    }
+    .ef-menu-group {
+        padding: var(--size--2) var(--size--2) var(--size--2);
+        font-size: var(--font-size--2);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: var(--font-letter-spacing-2);
+        color: var(--_ink-dim);
+    }
+    .ef-menu-item { padding: var(--size--2) var(--size--2); cursor: pointer; }
+    .ef-menu-item-name { font-size: var(--font-size--2); color: var(--_ink); }
+    .ef-menu-item-note { font-size: var(--font-size--2); color: var(--_ink-dim); margin-top: var(--size--2); }
+
+    /* Panels: the alternatives editor, an error, and the match preview. */
+    .ef-panel {
+        padding: var(--size--2) var(--size--2);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        border-radius: var(--border-radius-0);
+        margin-bottom: var(--size--2);
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+    }
+    .ef-panel--accent {
+        margin-bottom: var(--size--2);
+        padding: var(--size--2) var(--size--2);
+        border: var(--border-width-0) solid color-mix(in oklab, var(--brand-accent-0) 40%, transparent);
+        border-radius: var(--border-radius-0);
+        background: color-mix(in oklab, var(--brand-accent-0) 6%, transparent);
+    }
+    .ef-error {
+        margin-bottom: var(--size--2);
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid color-mix(in oklab, var(--brand-danger-0) 50%, transparent);
+        background: color-mix(in oklab, var(--brand-danger-0) 10%, transparent);
+        color: var(--danger-text);
+        font-size: var(--font-size--2);
+        line-height: var(--font-line-height--3);
+    }
+    /* The preview line's three states. previewStyle() built these as declaration
+       strings in Go; the kind is a class now and the look is a rule. */
+    .ef-preview {
+        font-size: var(--font-size--2);
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--border-radius-0);
+        line-height: var(--font-line-height--3);
+    }
+    .ef-preview--conflict {
+        color: var(--danger-text);
+        background: color-mix(in oklab, var(--brand-danger-0) 8%, transparent);
+        border-left: var(--border-width-1) solid color-mix(in oklab, var(--brand-danger-0) 50%, transparent);
+    }
+    .ef-preview--info {
+        color: var(--_ink-dim);
+        background: var(--neutral-2);
+        --_ink: var(--neutral-2-on);
+        --_ink-dim: var(--neutral-2-dim);
+        border-left: var(--border-width-1) solid var(--neutral-variant-3);
+    }
+    .ef-preview--free {
+        color: var(--success-text);
+        background: color-mix(in oklab, var(--brand-success-0) 6%, transparent);
+        border-left: var(--border-width-1) solid color-mix(in oklab, var(--brand-success-0) 40%, transparent);
+    }
+    .ef-preview--mb6 { margin-bottom: var(--size--2); }
+    .ef-preview--mb10 { margin-bottom: var(--size--2); }
+    /* The warning line above the form, in the same shape. */
+    .ef-warn {
+        font-size: var(--font-size--2);
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--border-radius-0);
+        margin-bottom: var(--size--2);
+        line-height: var(--font-line-height--3);
+        color: var(--warning-text);
+        background: color-mix(in oklab, var(--brand-warning-0) 8%, transparent);
+        border-left: var(--border-width-1) solid color-mix(in oklab, var(--brand-warning-0) 50%, transparent);
+    }
+    .ef-warn--mt6 { margin-top: var(--size--2); margin-bottom: 0; }
+    .ef-preview--mt8 { margin-top: var(--size--2); }
+    .ef-mt8 { margin-top: var(--size--2); }
+
+    /* The three questions. One box per question: a numbered header, the
+       question's controls, and its growth chips. */
+    .ef-q {
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        border-radius: var(--border-radius-3);
+        padding: var(--size--1) var(--size-0);
+        margin-bottom: var(--size--2);
+        background: var(--neutral-2);
+        --_ink: var(--neutral-2-on);
+        --_ink-dim: var(--neutral-2-dim);
+    }
+    .ef-qh { display: flex; align-items: baseline; gap: var(--size--2); margin-bottom: var(--size--2); }
+    .ef-qn { font-family: var(--font-mono); font-size: var(--font-size--2); color: var(--_ink-dim); }
+    .ef-qt { font-size: var(--font-size-0); font-weight: 600; color: var(--_ink); }
+    .ef-qs { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    .ef-resting { font-size: var(--font-size--2); color: var(--_ink-dim); padding: var(--size--2) 0; }
+
+    /* Growth chips: every richer piece is one "+" away, in its question. */
+    .ef-plusrow { display: flex; gap: var(--size--2); flex-wrap: wrap; margin-top: var(--size--2); align-items: center; }
+    .ef-plus {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--size--2);
+        color: var(--accent-text);
+        font-size: var(--font-size--2);
+        line-height: var(--font-line-height--3);
+        min-height: 0;
+        padding: 3px 9px;
+        background: transparent;
+        border: var(--border-width-0) dashed color-mix(in oklab, var(--brand-accent-0) 45%, transparent);
+        border-radius: var(--border-radius-0);
+        cursor: pointer;
+    }
+    .ef-plus:hover { border-style: solid; background: color-mix(in oklab, var(--brand-accent-0) 8%, transparent); }
+
+    /* "It does": the picker's closed face beside the value, the popover below. */
+    .ef-does { display: flex; gap: var(--size--2); align-items: center; flex-wrap: wrap; }
+    .ef-pickwrap { position: relative; display: inline-flex; }
+    .ef-pick {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--size--2);
+        padding: var(--size--2) var(--size--1);
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+        color: var(--_ink);
+        font-size: var(--font-size--1);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .ef-pick-sub { color: var(--_ink-dim); font-size: var(--font-size--2); }
+    .ef-pick-caret { color: var(--_ink-dim); font-size: var(--font-size--2); margin-top: -3px; }
+    .ef-menu--below { top: 100%; bottom: auto; margin-top: var(--size--2); margin-bottom: 0; }
+    .ef-menu--picker { min-width: 420px; max-height: 360px; }
+    .ef-shapes { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--size--2); padding: 0 var(--size--2) var(--size--2); }
+    .ef-shape {
+        text-align: left;
+        background: var(--neutral-3);
+        --_ink: var(--neutral-3-on);
+        --_ink-dim: var(--neutral-3-dim);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        border-radius: var(--border-radius-3);
+        padding: var(--size--2) var(--size--1);
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .ef-shape:hover { border-color: var(--_ink-dim); }
+    .ef-shape--on { border-color: var(--brand-accent-0); }
+    .ef-shape-t { font-size: var(--font-size--1); color: var(--_ink); font-weight: 600; }
+    .ef-shape-e { font-size: var(--font-size--2); color: var(--_ink-dim); font-family: var(--font-mono); }
+    .ef-menu-item:hover { background: var(--scrim-2); }
+    .ef-menu-item--on .ef-menu-item-name { color: var(--accent-text); }
+    .ef-menu-item-owner { color: var(--_ink-dim); margin-left: var(--size--2); }
+
+    /* "Only when": one row per condition, the chips and their picker beside
+       the row's name; "Afterwards" nests two of them. */
+    .ef-cond { display: flex; gap: var(--size--2); align-items: center; margin-top: var(--size--2); }
+    .ef-cond--rel { position: relative; }
+    .ef-cond-k { font-size: var(--font-size--2); color: var(--_ink); font-weight: 600; min-width: 64px; }
+    .ef-cond-k--sm { font-weight: 400; color: var(--_ink-dim); min-width: 48px; }
+    .ef-after { margin-top: var(--size--2); padding-top: var(--size--2); border-top: var(--border-width-0) solid var(--neutral-variant-3); }
+    .ef-after-k { font-size: var(--font-size--2); color: var(--_ink); font-weight: 600; }
+
+    /* Details: a fold line, then the panel. */
+    .ef-fold {
+        display: flex;
+        align-items: center;
+        gap: var(--size--2);
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        padding: var(--size--2) 2px;
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        cursor: pointer;
+    }
+    .ef-fold b { color: var(--_ink); font-weight: 600; }
+    .ef-fold-arrow { display: inline-block; transition: transform var(--anim-duration-1); }
+    .ef-fold--open .ef-fold-arrow { transform: rotate(90deg); }
+    .ef-fold-sub { color: var(--_ink-dim); }
+    .ef-fold--static { cursor: default; }
+    .ef-title-phrase { font-family: var(--font-mono); font-size: var(--font-size--1); color: var(--_ink); background: var(--neutral-3); border-radius: var(--border-radius-0); padding: 0 var(--size--2); }
+
+    /* The locked inspector: the same boxes, controls printed as text. */
+    .editor-pane--locked .ef-q { background: transparent; }
+    .ef-slots--locked { background: transparent; border-style: dashed; }
+    .ef-slot-static {
+        display: inline-flex;
+        align-items: center;
+        padding: var(--size--2) var(--size--2);
+        border-radius: var(--border-radius-0);
+        border: var(--border-width-0) dashed var(--neutral-variant-3);
+        font-family: var(--font-mono);
+        font-size: var(--font-size--2);
+        color: var(--_ink);
+    }
+    .ef-slot-static--alt { border-color: color-mix(in oklab, var(--brand-accent-0) 40%, transparent); }
+    .ef-slot-static--list { border-color: color-mix(in oklab, var(--brand-accent-0) 40%, transparent); color: var(--accent-text); }
+    .ef-pick--static { border-style: dashed; cursor: default; }
+    .ef-value {
+        font-family: var(--font-mono);
+        font-size: var(--font-size--2);
+        color: var(--_ink);
+        background: var(--neutral-3);
+        border-radius: var(--border-radius-0);
+        padding: var(--size--2) var(--size--2);
+    }
+    .ef-bind {
+        font-size: var(--font-size--2);
+        color: var(--accent-text);
+        border: var(--border-width-0) dashed color-mix(in oklab, var(--brand-accent-0) 40%, transparent);
+        border-radius: var(--border-radius-0);
+        padding: 2px var(--size--2);
+    }
+    .ef-raw {
+        margin: var(--size--2) 0 0;
+        padding: var(--size--2);
+        font-family: var(--font-mono);
+        font-size: var(--font-size--2);
+        color: var(--_ink);
+        background: var(--neutral-3);
+        border-radius: var(--border-radius-0);
+        white-space: pre-wrap;
+        max-height: 200px;
+        overflow: auto;
+    }
+    .ef-footer--start { justify-content: flex-start; }
+    .ef-btn--danger { color: color-mix(in oklab, var(--brand-danger-0) 80%, var(--_ink)); border-color: color-mix(in oklab, var(--brand-danger-0) 40%, transparent); }
+
+    /* Customizing: the override notice reads as an outcome, not a warning. */
+    .ef-ovr {
+        background: color-mix(in oklab, var(--brand-warning-0) 10%, transparent);
+        border: var(--border-width-0) solid color-mix(in oklab, var(--brand-warning-0) 30%, transparent);
+        border-radius: var(--border-radius-0);
+        padding: var(--size--2) var(--size--1);
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        margin-bottom: var(--size--2);
+    }
+    .ef-ovr b { color: var(--_ink); }
+
+    /* Start from…: cards. */
+    .ef-start { display: grid; grid-template-columns: 1fr 1fr; gap: var(--size--2); }
+    .ef-card {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        text-align: left;
+        background: var(--neutral-2);
+        --_ink: var(--neutral-2-on);
+        --_ink-dim: var(--neutral-2-dim);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        border-radius: var(--border-radius-3);
+        padding: var(--size--1) var(--size-0);
+        cursor: pointer;
+    }
+    .ef-card:hover { border-color: var(--brand-accent-0); }
+    .ef-card--wide { grid-column: 1 / -1; }
+    .ef-card-t { font-weight: 600; font-size: var(--font-size--1); color: var(--_ink); }
+    .ef-card-t code { font-family: var(--font-mono); font-weight: 500; }
+    .ef-card-d { font-size: var(--font-size--2); color: var(--_ink-dim); }
+    .ef-card-d--mono { font-family: var(--font-mono); }
+
+    /* A refusal: the one line that blocks Save, with its ways out. */
+    .ef-refuse {
+        margin-top: var(--size--2);
+        padding: var(--size--2) var(--size--1);
+        border-radius: var(--border-radius-0);
+        border-left: var(--border-width-1) solid color-mix(in oklab, var(--brand-danger-0) 60%, transparent);
+        background: color-mix(in oklab, var(--brand-danger-0) 8%, transparent);
+    }
+    .ef-refuse-msg { font-size: var(--font-size--2); color: var(--danger-text); line-height: var(--font-line-height--3); }
+    .ef-refuse .ef-plusrow { margin-top: var(--size--2); }
+    .ef-plus--hint { border-color: transparent; color: var(--_ink-dim); cursor: default; }
+    .ef-preview--shadow {
+        color: var(--warning-text);
+        background: color-mix(in oklab, var(--brand-warning-0) 8%, transparent);
+        border-left: var(--border-width-1) solid color-mix(in oklab, var(--brand-warning-0) 50%, transparent);
+    }
+
+    /* A field is fixed or from a blank: a segmented pair of chips. */
+    .ef-seg { display: inline-flex; border: var(--border-width-0) solid var(--neutral-variant-3); border-radius: var(--border-radius-0); overflow: hidden; }
+    .ef-seg-item {
+        background: transparent;
+        border: none;
+        padding: 3px 9px;
+        min-height: 0;
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .ef-seg-item + .ef-seg-item { border-left: var(--border-width-0) solid var(--neutral-variant-3); }
+    .ef-seg-item--on { background: var(--neutral-3); --_ink: var(--neutral-3-on); --_ink-dim: var(--neutral-3-dim); color: var(--accent-text); }
+    .ef-seq-move { display: inline-flex; flex-direction: column; line-height: 1; }
+    .ef-seq-move .ef-btn[disabled] { opacity: 0.3; cursor: default; }
+
+    /* The pane at 520px: the boxes already stack; the picker opens as a
+       sheet, the shapes go single-column, the value drops under the face. */
+    @container inspector (max-width: 560px) {
+        .ef-menu--picker { position: fixed; left: 8px; right: 8px; bottom: 8px; top: auto; min-width: 0; max-height: 70vh; }
+        .ef-shapes { grid-template-columns: 1fr; }
+        .ef-does { flex-direction: column; align-items: stretch; }
+        .ef-pickwrap { display: flex; }
+        .ef-pick { width: 100%; justify-content: space-between; }
+        .ef-start { grid-template-columns: 1fr; }
+    }
+}
+
+/* --- Setup tabs (the bodies of voice's Setup steps) ----------------------- */
+
+.setup-tab {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size--2);
+    & .setup-models { display: flex; flex-direction: column; gap: var(--size--2); }
+    & .setup-model {
+        padding: var(--size--2) 0;
+        border-top: var(--border-width-0) solid var(--neutral-variant-3);
+    }
+    & .setup-steps {
+        margin: 0;
+        padding-left: var(--size-2);
+        font-size: var(--font-size--1);
+        line-height: 1.8;
+    }
+    & .setup-practice { min-height: 3.5em; width: 100%; margin-top: var(--size--3); }
+    & .mic-row { display: flex; gap: var(--size--1); align-items: center; flex-wrap: wrap; }
+    & .mic-select { max-width: 100%; min-width: min(24rem, 100%); }
+    & .model-lang-row { margin-bottom: var(--size--2); }
+
+    /* "Try it": three checks, each with a mark that ticks by itself. */
+    & .setup-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+    & .setup-check {
+        display: flex;
+        gap: var(--size--1);
+        align-items: flex-start;
+        padding: var(--size--2) 0;
+        & + .setup-check { border-top: var(--border-width-0) solid var(--neutral-variant-3); }
+    }
+    & .check-mark {
+        width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px;
+        border-radius: 999px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: var(--border-width-1) solid var(--neutral-variant-4);
+        &.pass { background: var(--brand-accent-0); border-color: transparent; color: #fff; }
+        &.fail { background: var(--brand-warning-0); border-color: transparent; color: #1a1200; }
+    }
+    & .check-title { font-size: var(--font-size--1); font-weight: 600; }
+    & .check-desc { font-size: var(--font-size--2); line-height: 1.6; color: var(--_ink-dim); margin: 2px 0 var(--size--3); }
+    & .check-desc kbd { margin: 0 1px; }
+    & .check-note { font-size: var(--font-size--2); line-height: 1.5; margin: 2px 0 var(--size--3); }
+    & .check-note.fail { color: var(--warning-text); }
+    & .sr-only {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+}

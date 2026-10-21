@@ -1,0 +1,39 @@
+{
+  "preset": "log",
+  "lifecycle": {
+    "type": "retention",
+    "retention_days": 180
+  },
+  "privacy": {
+    "default_recording": true,
+    "reason_for_default_on": "session summaries drive the calibration score display — needed for the feature to function"
+  },
+  "description": "Session summaries from calibration runs.",
+  "fields": [
+    {
+      "key": "source",
+      "field_type": "string",
+      "label": "Source"
+    },
+    {
+      "key": "group",
+      "field_type": "string",
+      "label": "Command group"
+    },
+    {
+      "key": "word_count",
+      "field_type": "number",
+      "label": "Words tested"
+    },
+    {
+      "key": "match_count",
+      "field_type": "number",
+      "label": "Words matched"
+    },
+    {
+      "key": "score_pct",
+      "field_type": "number",
+      "label": "Score %"
+    }
+  ]
+}

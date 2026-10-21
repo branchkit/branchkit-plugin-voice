@@ -1,0 +1,986 @@
+[
+  {
+    "pattern": [
+      "undo"
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "z",
+        "modifiers": [
+          "primary"
+        ]
+      }
+    },
+    "category": "Editing",
+    "description": "Undo the last edit."
+  },
+  {
+    "pattern": [
+      "redo"
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "z",
+        "modifiers": [
+          "primary",
+          "shift"
+        ]
+      }
+    },
+    "category": "Editing",
+    "description": "Redo the last undone edit."
+  },
+  {
+    "pattern": [
+      "copy that"
+    ],
+    "action": {
+      "type": "input.clipboard",
+      "params": {
+        "action": "copy"
+      }
+    },
+    "category": "Editing",
+    "description": "Copy the current selection to the clipboard."
+  },
+  {
+    "pattern": [
+      "cut that"
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "x",
+        "modifiers": [
+          "primary"
+        ]
+      }
+    },
+    "category": "Editing",
+    "description": "Cut the current selection to the clipboard."
+  },
+  {
+    "pattern": [
+      "paste that"
+    ],
+    "action": {
+      "type": "input.clipboard",
+      "params": {
+        "action": "paste"
+      }
+    },
+    "category": "Editing",
+    "description": "Paste from the clipboard at the cursor."
+  },
+  {
+    "pattern": [
+      [
+        "select all",
+        "select everything"
+      ]
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "a",
+        "modifiers": [
+          "primary"
+        ]
+      }
+    },
+    "category": "Editing",
+    "description": "Select everything in the current field or document."
+  },
+  {
+    "pattern": [
+      "find"
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "f",
+        "modifiers": [
+          "primary"
+        ]
+      }
+    },
+    "category": "Editing",
+    "description": "Open the app's find/search box."
+  },
+  {
+    "pattern": [
+      "save"
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "s",
+        "modifiers": [
+          "primary"
+        ]
+      }
+    },
+    "category": "Editing",
+    "description": "Save the current document."
+  },
+  {
+    "pattern": [
+      "over"
+    ],
+    "action": {
+      "type": "_escape"
+    },
+    "mode_global": true,
+    "cancels_bridge": true,
+    "category": "Navigation",
+    "description": "Close the most recent thing you opened (snap mode, a picker, resize mode). With nothing open, press Escape."
+  },
+  {
+    "pattern": [
+      "stop",
+      "connections"
+    ],
+    "action": {
+      "type": "connections.stop"
+    },
+    "cancels_bridge": true,
+    "category": "Connections",
+    "description": "Pause every connected AI app at once, until you resume it in Settings."
+  },
+  {
+    "pattern": [
+      "stop",
+      "connections"
+    ],
+    "action": {
+      "type": "connections.stop"
+    },
+    "mode_global": true,
+    "cancels_bridge": true,
+    "category": "Connections",
+    "description": "Pause every connected AI app at once, until you resume it in Settings (inside a mode)."
+  },
+  {
+    "pattern": [
+      "clear"
+    ],
+    "action": {
+      "type": "sequence",
+      "actions": [
+        {
+          "type": "input.key_by_name",
+          "params": {
+            "name": "escape"
+          }
+        },
+        {
+          "type": "input.key_by_name",
+          "params": {
+            "name": "escape"
+          }
+        }
+      ]
+    },
+    "category": "Editing",
+    "description": "Dismiss stacked popups (sends Escape twice)."
+  },
+  {
+    "pattern": [
+      "end"
+    ],
+    "action": {
+      "type": "input.navigate",
+      "params": {
+        "to": "document_end"
+      }
+    },
+    "category": "Navigation",
+    "description": "Jump to the bottom of the document."
+  },
+  {
+    "pattern": [
+      "top"
+    ],
+    "action": {
+      "type": "input.navigate",
+      "params": {
+        "to": "document_start"
+      }
+    },
+    "category": "Editing",
+    "description": "Jump to the top of the document."
+  },
+  {
+    "pattern": [
+      "bottom"
+    ],
+    "action": {
+      "type": "input.navigate",
+      "params": {
+        "to": "document_end"
+      }
+    },
+    "category": "Editing",
+    "description": "Jump to the bottom of the document."
+  },
+  {
+    "pattern": [
+      "go",
+      "start"
+    ],
+    "action": {
+      "type": "input.navigate",
+      "params": {
+        "to": "line_start"
+      }
+    },
+    "category": "Navigation",
+    "description": "Jump to the start of the line."
+  },
+  {
+    "pattern": [
+      "go",
+      "end"
+    ],
+    "action": {
+      "type": "input.navigate",
+      "params": {
+        "to": "line_end"
+      }
+    },
+    "category": "Navigation",
+    "description": "Jump to the end of the line."
+  },
+  {
+    "pattern": [
+      "word",
+      "left"
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "left",
+        "modifiers": [
+          "alt"
+        ]
+      }
+    },
+    "category": "Navigation",
+    "description": "Move the cursor one word left."
+  },
+  {
+    "pattern": [
+      "word",
+      "right"
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "right",
+        "modifiers": [
+          "alt"
+        ]
+      }
+    },
+    "category": "Navigation",
+    "description": "Move the cursor one word right."
+  },
+  {
+    "pattern": [
+      "scroll",
+      "<direction>"
+    ],
+    "action": {
+      "type": "input.scroll",
+      "params": {
+        "direction": "{direction}",
+        "amount": 30
+      }
+    },
+    "category": "Navigation",
+    "description": "Scroll the focused view in a direction."
+  },
+  {
+    "pattern": [
+      "press",
+      "<modifiers>*",
+      "<keys|alphabet|number>"
+    ],
+    "action": {
+      "type": "input.shortcut_by_name",
+      "params": {
+        "name": "{keys}",
+        "modifiers": [
+          "{modifiers}"
+        ]
+      }
+    },
+    "category": "Keyboard",
+    "description": "Send an arbitrary keyboard shortcut (e.g. \"press command s\")."
+  },
+  {
+    "pattern": [
+      [
+        "show"
+      ],
+      [
+        "commands",
+        "help"
+      ]
+    ],
+    "action": {
+      "type": "hud.show",
+      "params": {
+        "target": "commands"
+      }
+    },
+    "category": "System",
+    "description": "Open the command reference HUD."
+  },
+  {
+    "pattern": [
+      [
+        "show"
+      ],
+      [
+        "entities",
+        "collections",
+        "lists"
+      ]
+    ],
+    "action": {
+      "type": "hud.show",
+      "params": {
+        "target": "entities"
+      }
+    },
+    "category": "System",
+    "description": "Open the entities / collections HUD."
+  },
+  {
+    "pattern": [
+      [
+        "show"
+      ],
+      [
+        "history",
+        "recent"
+      ]
+    ],
+    "action": {
+      "type": "hud.show",
+      "params": {
+        "target": "history"
+      }
+    },
+    "category": "System",
+    "description": "Open the recent-commands history HUD with confidence scores."
+  },
+  {
+    "pattern": [
+      [
+        "cancel",
+        "close hud"
+      ]
+    ],
+    "action": {
+      "type": "hud.hide"
+    },
+    "category": "System",
+    "description": "Close the HUD overlay."
+  },
+  {
+    "pattern": [
+      [
+        "focus"
+      ],
+      [
+        "prompt"
+      ]
+    ],
+    "action": {
+      "type": "hud.focus"
+    },
+    "category": "System",
+    "description": "Give the waiting prompt (or notification, or HUD) the keyboard, so Tab and Return reach its buttons."
+  },
+  {
+    "pattern": [
+      [
+        "show"
+      ],
+      [
+        "dictation"
+      ]
+    ],
+    "action": {
+      "type": "hud.show",
+      "params": {
+        "target": "dictation"
+      }
+    },
+    "category": "System",
+    "description": "Open the recent-dictations HUD."
+  },
+  {
+    "pattern": [
+      [
+        "dismiss",
+        "close"
+      ],
+      [
+        "notification",
+        "notice"
+      ]
+    ],
+    "action": {
+      "type": "hud.hide",
+      "params": {
+        "channel": "_platform.notification"
+      }
+    },
+    "category": "System",
+    "description": "Dismiss the notification on screen."
+  },
+  {
+    "pattern": [
+      "close",
+      [
+        "cards",
+        "card"
+      ]
+    ],
+    "action": {
+      "type": "voice.close_floats"
+    },
+    "category": "System",
+    "description": "Close every floating reference card."
+  },
+  {
+    "pattern": [
+      "speak",
+      [
+        "start",
+        "now"
+      ]
+    ],
+    "action": {
+      "type": "voice.speak",
+      "phase": "start"
+    },
+    "sets_tags": [
+      "plugin.voice.speaking"
+    ],
+    "category": "Dictation",
+    "description": "Start free-form speak dictation — keep talking until you say a stop phrase."
+  },
+  {
+    "pattern": [
+      [
+        "speak",
+        "speech",
+        "speed",
+        "branch"
+      ],
+      "over"
+    ],
+    "action": {
+      "type": "voice.speak",
+      "phase": "stop"
+    },
+    "requires_tags": [
+      "plugin.voice.speaking"
+    ],
+    "clears_tags": [
+      "plugin.voice.speaking"
+    ],
+    "category": "Dictation",
+    "description": "Finish speak dictation and insert the text."
+  },
+  {
+    "pattern": [
+      "branch",
+      "stop"
+    ],
+    "action": {
+      "type": "voice.speak",
+      "phase": "stop"
+    },
+    "requires_tags": [
+      "plugin.voice.speaking"
+    ],
+    "clears_tags": [
+      "plugin.voice.speaking"
+    ],
+    "category": "Dictation",
+    "description": "Finish speak dictation and insert the text."
+  },
+  {
+    "pattern": [
+      [
+        "speak",
+        "speech",
+        "branch"
+      ],
+      "cancel"
+    ],
+    "action": {
+      "type": "voice.speak",
+      "phase": "stop"
+    },
+    "requires_tags": [
+      "plugin.voice.speaking"
+    ],
+    "clears_tags": [
+      "plugin.voice.speaking"
+    ],
+    "category": "Dictation",
+    "description": "Cancel speak dictation (discard)"
+  },
+  {
+    "pattern": [
+      "type again"
+    ],
+    "action": {
+      "type": "voice.retype_last"
+    },
+    "category": "Dictation",
+    "description": "Type your last dictation again, at the cursor. For text that went to the wrong place or was lost."
+  },
+  {
+    "pattern": [
+      "make",
+      "that",
+      "correct"
+    ],
+    "action": {
+      "type": "voice.rewrite_selection",
+      "params": {
+        "style": "correct"
+      }
+    },
+    "category": "Dictation",
+    "description": "Fix the grammar, spelling and punctuation of the selected text, keeping your words and tone, every name and number kept."
+  },
+  {
+    "pattern": [
+      "make",
+      "that",
+      "casual"
+    ],
+    "action": {
+      "type": "voice.rewrite_selection",
+      "params": {
+        "style": "casual"
+      }
+    },
+    "category": "Dictation",
+    "description": "Rewrite the selected text in the Casual style: lowercase and relaxed, every name and number kept."
+  },
+  {
+    "pattern": [
+      "make",
+      "that",
+      "formal"
+    ],
+    "action": {
+      "type": "voice.rewrite_selection",
+      "params": {
+        "style": "formal"
+      }
+    },
+    "category": "Dictation",
+    "description": "Rewrite the selected text in the Formal style: complete sentences, no contractions or slang, every name and number kept."
+  },
+  {
+    "pattern": [
+      "make",
+      "that",
+      "an",
+      "email"
+    ],
+    "action": {
+      "type": "voice.rewrite_selection",
+      "params": {
+        "style": "email"
+      }
+    },
+    "category": "Dictation",
+    "description": "Rewrite the selected text as an email: Formal, with a greeting and a sign-off."
+  },
+  {
+    "pattern": [
+      "type original"
+    ],
+    "action": {
+      "type": "voice.retype_last",
+      "params": {
+        "form": "raw"
+      }
+    },
+    "category": "Dictation",
+    "description": "Type your last dictation as it was heard, before corrections and formatting. Undo the cleaned-up text first if you want it replaced."
+  },
+  {
+    "pattern": [
+      [
+        "branch wake",
+        "wake",
+        "start listening"
+      ]
+    ],
+    "action": {
+      "type": "voice.wake"
+    },
+    "requires_tags": [
+      "plugin.voice.mode.continuous_sleeping"
+    ],
+    "category": "Continuous",
+    "description": "Wake from sleep into continuous (hands-free) listening."
+  },
+  {
+    "pattern": [
+      [
+        "branch sleep",
+        "sleep",
+        "stop listening"
+      ]
+    ],
+    "action": {
+      "type": "voice.sleep"
+    },
+    "requires_tags": [
+      "plugin.voice.mode.continuous_awake"
+    ],
+    "mode_global": true,
+    "category": "Continuous",
+    "description": "Put continuous listening to sleep from any mode — bails out of snap/spelling/etc. and stops acting on speech."
+  },
+  {
+    "pattern": [
+      "open",
+      "app"
+    ],
+    "action": {
+      "type": "voice.enter_picker",
+      "params": {
+        "mode": "app"
+      }
+    },
+    "sets_tags": [
+      "plugin.voice.open_app"
+    ],
+    "category": "Applications",
+    "description": "Open an app — then say the app name."
+  },
+  {
+    "pattern": [
+      "<apps>"
+    ],
+    "action": {
+      "type": "apps.launch",
+      "params": {
+        "app_id": "{apps}"
+      }
+    },
+    "requires_tags": [
+      "plugin.voice.open_app"
+    ],
+    "clears_tags": [
+      "plugin.voice.open_app"
+    ],
+    "category": "Applications",
+    "description": "Switch to the named app (open-app picker)."
+  },
+  {
+    "pattern": [
+      "open",
+      "collection"
+    ],
+    "action": {
+      "type": "voice.enter_picker",
+      "params": {
+        "mode": "collection"
+      }
+    },
+    "sets_tags": [
+      "plugin.voice.collection_picker"
+    ],
+    "category": "System",
+    "description": "Open a collection as a floating reference card — then say the collection name."
+  },
+  {
+    "pattern": [
+      "<plugin.voice.floatable_collections>"
+    ],
+    "action": {
+      "type": "voice.open_float",
+      "params": {
+        "collection": "{floatable_collections}"
+      }
+    },
+    "requires_tags": [
+      "plugin.voice.collection_picker"
+    ],
+    "clears_tags": [
+      "plugin.voice.collection_picker"
+    ],
+    "category": "System",
+    "description": "Float the named collection as a reference card (open-collection picker)."
+  },
+  {
+    "pattern": [
+      [
+        "toggle",
+        "show",
+        "hide"
+      ],
+      "sidebar"
+    ],
+    "category": "Applications",
+    "variants": [
+      {
+        "action": {
+          "type": "input.shortcut_by_name",
+          "params": {
+            "name": "b",
+            "modifiers": [
+              "cmd"
+            ]
+          }
+        },
+        "requires_tags": [
+          "app.com.microsoft.VSCode"
+        ],
+        "description": "Toggle sidebar (VS Code)"
+      },
+      {
+        "action": {
+          "type": "input.shortcut_by_name",
+          "params": {
+            "name": "s",
+            "modifiers": [
+              "cmd",
+              "option"
+            ]
+          }
+        },
+        "requires_tags": [
+          "app.com.apple.finder"
+        ],
+        "description": "Toggle sidebar (Finder)"
+      },
+      {
+        "action": {
+          "type": "input.shortcut_by_name",
+          "params": {
+            "name": "0",
+            "modifiers": [
+              "cmd"
+            ]
+          }
+        },
+        "requires_tags": [
+          "app.com.apple.dt.Xcode"
+        ],
+        "description": "Toggle sidebar (Xcode)"
+      },
+      {
+        "action": {
+          "type": "input.shortcut_by_name",
+          "params": {
+            "name": "d",
+            "modifiers": [
+              "cmd",
+              "shift"
+            ]
+          }
+        },
+        "requires_tags": [
+          "app.com.tinyspeck.slackmacgap"
+        ],
+        "description": "Toggle sidebar (Slack)"
+      },
+      {
+        "action": {
+          "type": "input.shortcut_by_name",
+          "params": {
+            "name": "backslash",
+            "modifiers": [
+              "cmd"
+            ]
+          }
+        },
+        "requires_tags": [
+          "app.dev.warp.Warp-Stable"
+        ],
+        "description": "Toggle sidebar (Warp)"
+      }
+    ]
+  },
+  {
+    "pattern": [
+      "build",
+      "and",
+      "run"
+    ],
+    "action": {
+      "type": "platform.bash",
+      "params": {
+        "script": "dev.sh"
+      }
+    },
+    "category": "System",
+    "description": "Run the project's dev build-and-run script."
+  },
+  {
+    "pattern": [
+      "spell",
+      "<alphabet>+"
+    ],
+    "action": {
+      "type": "input.type",
+      "params": {
+        "text": "{alphabet:join(\"\")}"
+      }
+    },
+    "sets_tags": [
+      "plugin.voice.mode.spelling"
+    ],
+    "category": "Keyboard",
+    "description": "Type a run of letters by spelling them out, then enters spelling mode."
+  },
+  {
+    "pattern": [
+      "<alphabet>"
+    ],
+    "action": {
+      "type": "input.type",
+      "params": {
+        "text": "{alphabet}"
+      }
+    },
+    "requires_tags": [
+      "plugin.voice.mode.spelling"
+    ],
+    "category": "Keyboard",
+    "description": "Type letter (spelling mode)"
+  },
+  {
+    "pattern": [
+      [
+        "over",
+        "stop",
+        "exit"
+      ]
+    ],
+    "action": {
+      "type": "input.key_by_name",
+      "params": {
+        "name": "escape"
+      }
+    },
+    "requires_tags": [
+      "plugin.voice.mode.spelling"
+    ],
+    "clears_tags": [
+      "plugin.voice.mode.spelling"
+    ],
+    "category": "Keyboard",
+    "description": "Exit spelling mode"
+  },
+  {
+    "pattern": [
+      "<choice:plugin.voice.tie_choices>"
+    ],
+    "action": {
+      "type": "voice.pick_tie",
+      "params": {
+        "choice": "{choice}"
+      }
+    },
+    "requires_tags": [
+      "plugin.voice.disambiguating"
+    ],
+    "clears_tags": [
+      "plugin.voice.disambiguating"
+    ],
+    "category": "Disambiguation",
+    "description": "Choose a command when several match the same phrase"
+  },
+  {
+    "pattern": [
+      "again"
+    ],
+    "action": {
+      "type": "voice.repeat"
+    },
+    "category": "Repeat",
+    "description": "Repeat the last command."
+  },
+  {
+    "pattern": [
+      "repeat",
+      "<number>"
+    ],
+    "action": {
+      "type": "voice.repeat",
+      "params": {
+        "count": "{number}"
+      }
+    },
+    "category": "Repeat",
+    "description": "Repeat the last command a number of times."
+  },
+  {
+    "pattern": [
+      "number",
+      "<number>"
+    ],
+    "action": {
+      "type": "input.key_by_name",
+      "params": {
+        "name": "{number}"
+      }
+    },
+    "category": "Keyboard",
+    "description": "Press a number key (e.g. \"number four\")."
+  },
+  {
+    "pattern": [
+      "key"
+    ],
+    "action": {
+      "type": "voice.enter_picker",
+      "params": {
+        "mode": "key"
+      }
+    },
+    "sets_tags": [
+      "plugin.voice.key_mode"
+    ],
+    "category": "Keyboard",
+    "description": "Enter key mode — then say key names (up, escape, space, a letter…) to press them."
+  },
+  {
+    "pattern": [
+      "<keys|alphabet>"
+    ],
+    "action": {
+      "type": "input.key_by_name",
+      "params": {
+        "name": "{keys}"
+      }
+    },
+    "requires_tags": [
+      "plugin.voice.key_mode"
+    ],
+    "sets_tags": [
+      "plugin.voice.key_mode"
+    ],
+    "category": "Keyboard",
+    "description": "Press a key by its codeword (key mode)."
+  }
+]

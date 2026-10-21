@@ -1,0 +1,4 @@
+# Dep for export_bpe_vocab.py, which makes the bpe.vocab published beside a
+# converted model from its bpe.model. The HLG-build toolchain (kaldifst) was retired with
+# tools/build_hlg.py — the stage self-seeds the command grammar in-process.
+sentencepiece>=0.2.0

@@ -1,0 +1,336 @@
+package views
+
+import "github.com/branchkit/plugin-sdk-go"
+import "github.com/branchkit/plugin-sdk-go/ui"
+import "fmt"
+import "strings"
+
+// The Models tab: the command models, each with its license, and a
+// comparison of them on the user's own confirmed recordings. Scorecards first, the best on this voice marked with its Use
+// button, then only the recordings the models heard differently.
+templ ModelsTab(data ModelsViewData) {
+	<div class="models-tab">
+		<div class="model-section-title">Commands</div>
+		<p class="model-section-note">
+			The command model hears your voice commands. Both run on this computer. Compare them on recordings you confirmed, then use the one that hears you best.
+		</p>
+		<div class="cmp-bar">
+			if data.Running {
+				<span class="bk-spinner" aria-hidden="true"></span>
+				<span role="status">{ data.Progress }</span>
+			} else {
+				if data.Compared {
+					<span class="grow">
+						{ fmt.Sprintf("Compared on %d confirmed recordings", data.Clips-data.Skipped) }
+						if data.Skipped > 0 {
+							{ fmt.Sprintf(" · %d left out: the commands they say have changed", data.Skipped) }
+						}
+					</span>
+				} else {
+					<span class="grow">Not compared yet.</span>
+				}
+				<button class="small" data-on:click={ branchkit.MethodPost("command_models/compare", "{}") }>
+					if data.Compared {
+						Run again
+					} else {
+						Compare on my voice
+					}
+				</button>
+			}
+		</div>
+		if data.Error != "" {
+			<div class="model-block" role="alert">{ "Comparison failed: " + data.Error }</div>
+		}
+		<div class="cmp-cards">
+			for _, c := range data.Cards {
+				<div class={ "model-card", templ.KV("cmp-best", c.Best) }>
+					<div class="model-card-label">
+						if c.InUse {
+							<span class="badge badge-core">In use</span>
+						} else if c.Best {
+							<span class="cmp-best-label">Best on your voice</span>
+						} else {
+							{ "Commands · " + c.Label }
+						}
+					</div>
+					<div class="model-title">{ c.Title }</div>
+					if c.Scored {
+						<div class="cmp-score">{ fmt.Sprint(c.Right) }<small>{ fmt.Sprintf(" of %d right", c.Total) }</small></div>
+					}
+					<div class="model-desc">
+						if c.MedianMs != "" {
+							{ c.MedianMs + " per recording · " }
+						}
+						{ c.Bytes } · { c.License }
+					</div>
+					<!-- Text, not a link: plugin tabs render in a frame that may not open
+					     windows, and opening a page would need the apps.control privilege. -->
+					<div class="model-desc cmp-source">{ strings.TrimPrefix(c.Source, "https://") }</div>
+					<div class="model-btn-row cmp-actions">
+						if c.InUse {
+						} else if c.Downloaded {
+							<button class={ "small", templ.KV("primary", c.Best) } data-on:click={ branchkit.MethodPost("command_model/set", ui.Args("name", c.Name)) }>Use this model</button>
+						} else if data.OtherDownload != "" || data.Downloading {
+							<button class="small" disabled>Download</button>
+						} else {
+							<button class="small" data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", c.Ref)) }>Download</button>
+						}
+					</div>
+				</div>
+			}
+		</div>
+		if data.Compared && len(data.Columns) > 1 {
+			if len(data.Disagreements) == 0 {
+				<p class="model-section-note">The models heard every recording the same way.</p>
+			} else {
+				<div class="cmp-dis" role="table" aria-label="Recordings the models heard differently">
+					<div class="cmp-row cmp-head" role="row">
+						<span role="columnheader">{ fmt.Sprintf("Where they disagree · %d", len(data.Disagreements)) }</span>
+						for _, col := range data.Columns {
+							<span role="columnheader">{ col }</span>
+						}
+					</div>
+					for _, d := range data.Disagreements {
+						<div class="cmp-row" role="row">
+							<span role="cell" class="cmp-said">
+								<audio class="cmp-audio" controls preload="none" src={ d.AudioURL }></audio>
+								{ d.Said }
+							</span>
+							for _, cell := range d.Cells {
+								<span role="cell">
+									if cell.Right {
+										<span class="cmp-ok" aria-label="right">&#10003;</span>
+									} else {
+										<span class="cmp-bad" aria-label="wrong">&#10007;</span>
+										if cell.Heard == "" {
+											<span class="cmp-heard">nothing</span>
+										} else {
+											<span class="cmp-heard">{ cell.Heard }</span>
+										}
+									}
+								</span>
+							}
+						</div>
+					}
+				</div>
+			}
+		}
+		@sayNowSection(data.SayNow)
+		if len(data.Dictation) > 0 {
+			<div class="model-section-title cmp-section">Dictation</div>
+			@dictationCompareSection(data.DictationCompare)
+			<div class="cmp-cards">
+				for _, c := range data.Dictation {
+					<div class={ "model-card", templ.KV("cmp-best", c.Best) }>
+						@modelCardBody(c)
+						<div class="model-btn-row cmp-actions">
+							if c.InUse {
+							} else if c.Downloaded {
+								<button class={ "small", templ.KV("primary", c.Best) } data-on:click={ branchkit.MethodPost("model/set", ui.Args("name", c.Name)) }>Use this model</button>
+							} else if data.OtherDownload != "" || data.Downloading {
+								<button class="small" disabled>Download</button>
+							} else {
+								<button class="small" data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", c.Ref)) }>Download</button>
+							}
+						</div>
+					</div>
+				}
+			</div>
+			@dictationDifferences(data.DictationCompare)
+		}
+		if len(data.Helpers) > 0 {
+			<div class="model-section-title cmp-section">Dictation clean-up and styles</div>
+			<p class="model-section-note">Turned on from the Dictation tab.</p>
+			<div class="cmp-cards">
+				for _, c := range data.Helpers {
+					<div class="model-card">
+						@modelCardBody(c)
+						<div class="model-btn-row cmp-actions">
+							if c.Downloaded {
+								<span class="badge badge-meta">Downloaded</span>
+							} else if data.OtherDownload != "" || data.Downloading {
+								<button class="small" disabled>Download</button>
+							} else {
+								<button class="small" data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", c.Ref)) }>Download</button>
+							}
+						</div>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+// modelCardBody is a listed model's label, name, size and license.
+templ modelCardBody(c ModelCard) {
+	<div class="model-card-label">
+		if c.InUse {
+			<span class="badge badge-core">In use</span>
+		} else if c.Best {
+			<span class="cmp-best-label">Best on your voice</span>
+		} else if c.Chosen {
+			Chosen · not downloaded
+		} else {
+			{ c.Label }
+		}
+	</div>
+	<div class="model-title">{ c.Title }</div>
+	if c.WordsPct != "" {
+		<div class="cmp-score">{ c.WordsPct }<small>of words right</small></div>
+	}
+	<div class="model-desc">
+		if c.MedianMs != "" {
+			{ c.MedianMs + " per sentence · " }
+		}
+		{ c.Bytes }
+		if c.License != "" {
+			{ " · " + c.License }
+		}
+	</div>
+	if c.Source != "" {
+		<div class="model-desc cmp-source">{ strings.TrimPrefix(c.Source, "https://") }</div>
+	}
+}
+
+// sayNowSection is Say a phrase: say something now, see what each model heard,
+// and say which was right; the answer joins the confirmed recordings.
+templ sayNowSection(s SayNowView) {
+	<div class="cmp-say">
+		<div class="cmp-bar">
+			if s.Armed {
+				<span class="bk-spinner" aria-hidden="true"></span>
+				<span class="grow" role="status">{ "Listening. Hold " + s.Key + " and say one command: it won't run." }</span>
+				<button class="small" data-on:click={ branchkit.MethodPost("say_now/stop", "{}") }>Stop</button>
+			} else {
+				<span class="grow">Say a phrase now and see what each model hears. It is kept only if you say which was right.</span>
+				<button class="small" data-on:click={ branchkit.MethodPost("say_now/start", "{}") }>Say a phrase</button>
+			}
+		</div>
+		if s.Error != "" {
+			<div class="model-block" role="alert">{ s.Error }</div>
+		}
+		if len(s.Rows) > 0 {
+			<div class="cmp-dis" role="table" aria-label="Phrases said just now">
+				<div class="cmp-row cmp-head" role="row">
+					<span role="columnheader">Said just now</span>
+					for _, col := range s.Columns {
+						<span role="columnheader">{ col }</span>
+					}
+				</div>
+				for _, r := range s.Rows {
+					<div class="cmp-row" role="row">
+						<span role="cell" class="cmp-said">
+							<audio class="cmp-audio" controls preload="none" src={ r.AudioURL }></audio>
+						</span>
+						for _, h := range r.Heard {
+							<span role="cell" class="cmp-heard">
+								if h == "" {
+									nothing
+								} else {
+									{ h }
+								}
+							</span>
+						}
+					</div>
+					<div class="cmp-answer">
+						<span>Which was right?</span>
+						for _, c := range r.Choices {
+							<button class="small" data-on:click={ branchkit.MethodPost("say_now/confirm", ui.Args("file", r.File, "text", c)) }>{ c }</button>
+						}
+						<input type="text" class="cmp-other" placeholder="something else" data-bind={ r.Signal }/>
+						<button class="small" data-on:click={ branchkit.MethodPost("say_now/confirm", ui.Args("file", r.File, "text", ui.Expr("$"+r.Signal))) }>Save</button>
+						<button class="small ghost" data-on:click={ branchkit.MethodPost("say_now/dismiss", ui.Args("file", r.File)) }>Discard</button>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+// dictationCompareSection is Read a sentence and the dictation comparison:
+// read sentences from a fixed set, keep the recordings, then compare every
+// downloaded dictation model on them.
+templ dictationCompareSection(d DictationCompareView) {
+	<div class="cmp-say">
+		<div class="cmp-bar">
+			if d.Armed {
+				<span class="bk-spinner" aria-hidden="true"></span>
+				<span class="grow" role="status">{ "Hold " + d.Key + " and read: “" + d.Sentence + "” It won't be typed." }</span>
+				<button class="small" data-on:click={ branchkit.MethodPost("read_sentence/stop", "{}") }>Stop</button>
+			} else {
+				<span class="grow">
+					{ fmt.Sprintf("%d sentences recorded. Read a few, then compare the models on them.", d.Recorded) }
+				</span>
+				<button class="small" data-on:click={ branchkit.MethodPost("read_sentence/start", "{}") }>Read a sentence</button>
+			}
+		</div>
+		if d.ReadError != "" {
+			<div class="model-block" role="alert">{ d.ReadError }</div>
+		}
+		for _, p := range d.Pending {
+			<div class="cmp-answer">
+				<audio class="cmp-audio" controls preload="none" src={ p.AudioURL }></audio>
+				<span class="grow">{ "“" + p.Sentence + "”" }</span>
+				<button class="small" data-on:click={ branchkit.MethodPost("read_sentence/keep", ui.Args("file", p.File)) }>Keep</button>
+				<button class="small ghost" data-on:click={ branchkit.MethodPost("read_sentence/discard", ui.Args("file", p.File)) }>Misread: discard</button>
+			</div>
+		}
+		<div class="cmp-bar">
+			if d.Running {
+				<span class="bk-spinner" aria-hidden="true"></span>
+				<span class="grow" role="status">{ d.Progress }</span>
+			} else if d.Recorded > 0 {
+				<span class="grow">
+					if d.Compared {
+						Compared on your recorded sentences.
+					} else {
+						Not compared yet.
+					}
+				</span>
+				<button class="small" data-on:click={ branchkit.MethodPost("dictation_models/compare", "{}") }>
+					if d.Compared {
+						Run again
+					} else {
+						Compare on my voice
+					}
+				</button>
+			}
+		</div>
+		if d.Error != "" {
+			<div class="model-block" role="alert">{ "Comparison failed: " + d.Error }</div>
+		}
+	</div>
+}
+
+// dictationDifferences is the sentences the dictation models heard
+// differently, below their cards as the command section has its own.
+templ dictationDifferences(d DictationCompareView) {
+	if d.Compared && len(d.Columns) > 1 && len(d.Rows) > 0 {
+		<div class="cmp-dis" role="table" aria-label="Sentences the dictation models heard differently">
+			<div class="cmp-row cmp-head" role="row">
+				<span role="columnheader">{ fmt.Sprintf("Where they differ · %d", len(d.Rows)) }</span>
+				for _, col := range d.Columns {
+					<span role="columnheader">{ col }</span>
+				}
+			</div>
+			for _, r := range d.Rows {
+				<div class="cmp-row" role="row">
+					<span role="cell" class="cmp-said">
+						<audio class="cmp-audio" controls preload="none" src={ r.AudioURL }></audio>
+						{ r.Sentence }
+					</span>
+					for _, c := range r.Cells {
+						<span role="cell">
+							if c.Errors == 0 {
+								<span class="cmp-ok" aria-label="every word right">&#10003;</span>
+							} else {
+								<span class="cmp-bad">{ fmt.Sprintf("%d wrong", c.Errors) }</span>
+							}
+							<span class="cmp-heard">{ c.Heard }</span>
+						</span>
+					}
+				</div>
+			}
+		</div>
+	}
+}

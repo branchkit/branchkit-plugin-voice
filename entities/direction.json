@@ -1,0 +1,6 @@
+[
+  {"spoken": "up", "key": "up", "aliases": ["top", "north"]},
+  {"spoken": "down", "key": "down", "aliases": ["bottom", "south"]},
+  {"spoken": "left", "key": "left", "aliases": ["west"]},
+  {"spoken": "right", "key": "right", "aliases": ["east"]}
+]

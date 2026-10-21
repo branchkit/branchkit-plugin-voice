@@ -1,0 +1,16 @@
+[package]
+name = "vad-gate"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "vad_gate"
+path = "src/main.rs"
+
+[dependencies]
+branchkit-stage-sdk = { workspace = true }
+voice_activity_detector = "0.2"
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
