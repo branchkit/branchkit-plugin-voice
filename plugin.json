@@ -11,6 +11,7 @@
       "calibration",
       "microphone",
       "events.speech",
+      "pipelines.speak_for_user",
       "questions.answer",
       "system.indicator",
       "notifications",
