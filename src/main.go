@@ -245,11 +245,27 @@ func main() {
 		return err
 	}
 	h.calib.TrialBegin = func() (string, error) {
-		resp, err := h.plugin.TrialBegin()
-		if err != nil {
-			return "", err
-		}
-		return resp.TrialID, nil
+		return beginTrialOrAsk(
+			func() (string, error) {
+				resp, err := h.plugin.TrialBegin()
+				if err != nil {
+					return "", err
+				}
+				return resp.TrialID, nil
+			},
+			func() (string, error) {
+				reason := calibrationPrivilegeReason
+				resp, err := h.plugin.PrivilegesRequest(branchkit.PrivilegesRequestRequest{
+					Privilege: calibrationPrivilege,
+					Reason:    &reason,
+				})
+				if err != nil {
+					return "", err
+				}
+				return resp.Status, nil
+			},
+			&h.calibPrivilegeAsked,
+		)
 	}
 	h.calib.TrialEnd = func(trialID string) error {
 		_, err := h.plugin.TrialEnd(branchkit.TrialEndRequest{TrialID: trialID})

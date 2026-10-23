@@ -54,6 +54,9 @@ type Host struct {
 	sess *session.State
 	// calib holds calibration-domain state (game, tab visibility).
 	calib *calibration.State
+	// calibPrivilegeAsked: the optional `calibration` privilege has been
+	// requested this run (beginTrialOrAsk), so a refused trial asks once.
+	calibPrivilegeAsked atomic.Bool
 	// edState holds editor-domain state (form, schema caches).
 	edState *editorState
 
