@@ -554,6 +554,10 @@ func (h *Host) handleVoiceCommand(req *branchkit.OnActionRequest) (any, error) {
 		h.sess.ClearLastMatch()
 		h.leaveCommandHold()
 		h.restartCmdRecAfterHold()
+		// An abort after the release took the cleanup's place (the drain
+		// is cancelled above): let any transcript held for it go on, now
+		// that the mode is back.
+		h.sess.OpenCmdRecHeldBack()
 		return h.handled(), nil
 	}
 	if isStopPhase(req) {

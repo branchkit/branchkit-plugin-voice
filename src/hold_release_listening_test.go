@@ -189,6 +189,24 @@ func TestRePressLetsHeldTranscriptsGo(t *testing.T) {
 	}
 }
 
+// An abort after the release takes the cleanup's place: it restores the mode
+// and lets held transcripts go, and nothing is held back after it.
+func TestAbortAfterReleaseLetsHeldTranscriptsGo(t *testing.T) {
+	h, p, _ := listeningHost(t)
+	releasedHold(t, h, p)
+
+	postActionWithPhase(h, t, "voice.command", "abort")
+	wantMode(t, h, "continuous_sleeping")
+	wantLive(t, p, "persistent")
+	p.deliverAllStopped()
+	if gate := h.sess.CmdRecHeldBack(); gate != nil {
+		t.Fatal("transcripts are held back after an abort ended the hold")
+	}
+	if a := say(t, h, "close tab"); len(a) != 0 {
+		t.Fatalf("speech while asleep ran as a command: %#v", a)
+	}
+}
+
 // A dictation holding the microphone at the release keeps the persistent
 // run down: nothing starts at the release and nothing is held back, and the
 // dictation's end brings the run back.
