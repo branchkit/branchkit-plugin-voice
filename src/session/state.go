@@ -138,7 +138,8 @@ type State struct {
 	// is set aside for a command hold, which listens on its own ephemeral run
 	// instead (the platform treats only an ephemeral run as a held key: the
 	// echo filter and spoken answers key on it). Set at the
-	// press, cleared when the hold's cleanup restarts the persistent run.
+	// press, cleared when the persistent run is started again: at the
+	// hold's release (ReturnCmdRecAtRelease), or else by its cleanup.
 	// Apart from cmdRecState: a dictation can set the run aside too, and the
 	// persistent run comes back only when neither holds it.
 	cmdRecAside bool
@@ -149,6 +150,19 @@ type State struct {
 	// run a `stopped` is about. Lets voice tell a hold's run ending from the
 	// persistent run it set aside ending.
 	cmdRecRuns []bool
+	// cmdRecHeldBack is open (non-nil) from a hold's release, where the
+	// persistent run is started again (ReturnCmdRecAtRelease), until the
+	// hold's cleanup has restored the base mode (OpenCmdRecHeldBack closes
+	// it). Starting the run at the release lets the platform capture speech
+	// from that moment; holding its transcripts back until the cleanup means
+	// they are resolved in continuous listening's mode, never the hold's.
+	cmdRecHeldBack chan struct{}
+	// cmdRecHoldRunEnded: the released hold's own run has said `stopped`
+	// while cmdRecHeldBack is open. Every transcript of the hold's run is
+	// answered before its `stopped` (the platform's ordering), and the run
+	// started at the release hears nothing until the hold's run has ended;
+	// so from here until the cleanup, a transcript is the persistent run's.
+	cmdRecHoldRunEnded bool
 
 	// Tie disambiguation state (set while the user is choosing among tied
 	// commands). tieWords are the words that produced the tie, replayed with
@@ -895,6 +909,10 @@ func (s *State) StartCommandHold() (prevDrainPending, ownsPipeline bool) {
 		s.cmdHoldDrainTimer = nil
 	}
 	s.saveBaseLocked()
+	// A re-press while the last hold drains: that hold's cleanup will not
+	// run (its generation is gone), so the persistent run's held-back
+	// transcripts go on now, under this hold.
+	s.openCmdRecHeldBackLocked()
 	ownsPipeline = true
 	s.cmdHoldDrainAwait = 0
 	s.cmdHoldActive = true
@@ -989,6 +1007,58 @@ func (s *State) releaseCmdRecAside(underHold bool) (restart bool) {
 	return restart
 }
 
+// ReturnCmdRecAtRelease ends a released hold's claim on the persistent run
+// at the release itself, rather than at its cleanup, when continuous
+// listening wants the run back (on, and no dictation holds it). restart
+// reports whether it did: the caller starts the run now, and its
+// transcripts are held back (CmdRecHeldBack) until the hold's cleanup has
+// restored the base mode. Otherwise the claim is left for the cleanup
+// (ReleaseCmdRecAside), as before.
+func (s *State) ReturnCmdRecAtRelease() (restart bool) {
+	s.mu.Lock()
+	if !s.cmdRecAside || s.cmdHoldActive || !s.continuousBaseLocked() || s.cmdRecState != PipelineActive {
+		s.mu.Unlock()
+		return false
+	}
+	s.cmdRecAside = false
+	s.openCmdRecHeldBackLocked()
+	s.cmdRecHeldBack = make(chan struct{})
+	s.mu.Unlock()
+	s.emitPipelineEvent("pstate: command_recognition active, back at the hold's release; its transcripts wait for the hold's cleanup")
+	return true
+}
+
+// CmdRecHeldBack returns the channel a command_recognition transcript must
+// wait on before it is resolved, or nil when it need not wait: the
+// persistent run was started again at a hold's release and the hold's own
+// run has ended, but the hold's cleanup has not yet restored the base mode.
+// A transcript arriving before the hold's run has said `stopped` is the
+// hold's own (its end-of-hold flush) and is not held.
+func (s *State) CmdRecHeldBack() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cmdRecHeldBack == nil || !s.cmdRecHoldRunEnded {
+		return nil
+	}
+	return s.cmdRecHeldBack
+}
+
+// OpenCmdRecHeldBack lets the held-back transcripts go on: the hold's
+// cleanup has restored the base mode. A no-op when nothing is held.
+func (s *State) OpenCmdRecHeldBack() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.openCmdRecHeldBackLocked()
+}
+
+func (s *State) openCmdRecHeldBackLocked() {
+	if s.cmdRecHeldBack != nil {
+		close(s.cmdRecHeldBack)
+		s.cmdRecHeldBack = nil
+	}
+	s.cmdRecHoldRunEnded = false
+}
+
 // IsCmdRecAside reports whether a command hold has set the persistent run
 // aside: command_recognition is the hold's own run until it is released.
 func (s *State) IsCmdRecAside() bool {
@@ -1046,6 +1116,9 @@ func (s *State) NoteCmdRecStopped() (known, ephemeral, drainDue bool) {
 	if s.cmdHoldDrainAwait > 0 {
 		s.cmdHoldDrainAwait--
 		drainDue = s.cmdHoldDrainAwait == 0
+	}
+	if drainDue && s.cmdRecHeldBack != nil {
+		s.cmdRecHoldRunEnded = true
 	}
 	if len(s.cmdRecRuns) == 0 {
 		return false, false, drainDue

@@ -108,3 +108,57 @@ func TestHoldDrainWaitsForTheRunsUpAtTheRelease(t *testing.T) {
 		t.Fatal("the hold's own run's stop must end its drain")
 	}
 }
+
+// At a hold's release the persistent run comes back at once, its
+// transcripts held back from when the hold's run has said stopped until
+// the cleanup lets them go; under a dictation the claim stays for the
+// cleanup and nothing is held.
+func TestCmdRecReturnedAtRelease(t *testing.T) {
+	s := newTestState()
+	s.SetCurrentMode("continuous_sleeping")
+	s.SetCmdRecActive()
+	s.StartCommandHold()
+	s.SetCmdRecAsideForHold()
+	s.NoteCmdRecStarted(true)
+	if s.ReturnCmdRecAtRelease() {
+		t.Fatal("while the key is down the claim is kept")
+	}
+
+	s.EndCommandHold()
+	s.BeginCommandHoldDrain(time.Hour, func() {})
+	if !s.ReturnCmdRecAtRelease() || s.IsCmdRecAside() {
+		t.Fatal("the release must start the persistent run again")
+	}
+	if s.ReturnCmdRecAtRelease() || s.ReleaseCmdRecAside() {
+		t.Fatal("the run was started twice")
+	}
+	if s.CmdRecHeldBack() != nil {
+		t.Fatal("the hold's own flush must not be held back")
+	}
+	s.NoteCmdRecStarted(false)
+	if _, ephemeral, due := s.NoteCmdRecStopped(); !ephemeral || !due {
+		t.Fatal("want the hold's run's stopped, drain due")
+	}
+	gate := s.CmdRecHeldBack()
+	if gate == nil {
+		t.Fatal("after the hold's run stopped, the persistent run's transcripts wait")
+	}
+	s.OpenCmdRecHeldBack()
+	select {
+	case <-gate:
+	default:
+		t.Fatal("the cleanup did not let the held transcripts go")
+	}
+	if s.CmdRecHeldBack() != nil {
+		t.Fatal("still held back after the cleanup")
+	}
+
+	// Under a dictation: the claim stays for the cleanup.
+	s.StartCommandHold()
+	s.SetCmdRecAsideForHold()
+	s.SuppressCommandRecognition()
+	s.EndCommandHold()
+	if s.ReturnCmdRecAtRelease() || !s.IsCmdRecAside() {
+		t.Fatal("released under a dictation, the run must stay down")
+	}
+}

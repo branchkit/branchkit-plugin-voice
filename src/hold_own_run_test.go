@@ -13,7 +13,8 @@ import (
 // its own, as push-to-talk does: the platform treats a transcript as the
 // person holding the key only when its run is ephemeral (the echo filter and
 // spoken answers to an app's question key on it). The persistent run is set
-// aside at the press and comes back once the hold's cleanup has run.
+// aside at the press and started again at the release, its transcripts held
+// back until the hold's cleanup has restored continuous listening's mode.
 
 // pipelineSim stands in for the platform's pipeline manager, for
 // command_recognition: one run of a name at a time, `started` said as a run
@@ -27,10 +28,8 @@ type pipelineSim struct {
 	calls    []string
 	live     *simRun
 	stopping []*simRun
-	// persistentRuns counts persistent command_recognition runs started, and
-	// modeAtPersistentRun the voice mode each was started in.
-	persistentRuns      int
-	modeAtPersistentRun []string
+	// persistentRuns counts persistent command_recognition runs started.
+	persistentRuns int
 	// refuseEphemeral answers an ephemeral run with started:false.
 	refuseEphemeral bool
 }
@@ -87,7 +86,6 @@ func (p *pipelineSim) run(req branchkit.PipelinesRunRequest) (*branchkit.Pipelin
 	p.live = &simRun{ephemeral: eph}
 	if !eph {
 		p.persistentRuns++
-		p.modeAtPersistentRun = append(p.modeAtPersistentRun, p.h.sess.GetCurrentMode())
 	}
 	p.mu.Unlock()
 	p.h.sess.NoteCmdRecStarted(eph)
@@ -265,9 +263,9 @@ func say(t *testing.T, h *Host, text string) []branchkit.Action {
 }
 
 // The whole hold: G down sets the persistent run aside and starts the hold's
-// own ephemeral run; G up stops it, and only when that run has drained does
-// the mode return to continuous listening and the persistent run come back,
-// once, in continuous listening's mode.
+// own ephemeral run; G up stops it and starts the persistent run again at
+// once, so speech after the release is captured; only when the hold's run
+// has drained does the mode return to continuous listening.
 func TestHoldOverContinuousListensOnItsOwnRun(t *testing.T) {
 	h, p, _ := listeningHost(t)
 	ends := watchHoldEnds(h)
@@ -294,21 +292,22 @@ func TestHoldOverContinuousListensOnItsOwnRun(t *testing.T) {
 	}
 
 	postActionWithPhase(h, t, "voice.command", "stop")
-	if got := p.take(); !slices.Equal(got, []string{"stop command_recognition"}) {
-		t.Fatalf("G up: calls %v, want the hold's run stopped", got)
+	if got := p.take(); !slices.Equal(got, []string{"stop command_recognition", "run command_recognition persistent"}) {
+		t.Fatalf("G up: calls %v, want the hold's run stopped and the persistent one started", got)
 	}
-	// Draining: the hold's run has not said stopped yet.
+	// Draining: the hold's run has not said stopped yet, and the
+	// persistent run is already capturing.
 	wantMode(t, h, "command_hold")
-	wantLive(t, p, "none")
+	wantLive(t, p, "persistent")
 
 	p.deliverStopped()
 	wantMode(t, h, "continuous_sleeping")
 	wantLive(t, p, "persistent")
-	if got := p.persistentStarts(); got != 2 {
-		t.Fatalf("persistent runs started = %d, want 2 (listening on, then once after the hold)", got)
+	if got := p.take(); len(got) != 0 {
+		t.Fatalf("the hold's cleanup touched the runs: calls %v", got)
 	}
-	if got := p.modeAtPersistentRun[1]; got != "continuous_sleeping" {
-		t.Fatalf("the persistent run came back in mode %q, want continuous_sleeping", got)
+	if got := p.persistentStarts(); got != 2 {
+		t.Fatalf("persistent runs started = %d, want 2 (listening on, then once at the release)", got)
 	}
 	if n := ends.count(); n != 1 {
 		t.Fatalf("calibration heard %d hold ends, want 1", n)
@@ -487,8 +486,9 @@ func TestHoldInsideDictationOverContinuousRestartOnce(t *testing.T) {
 }
 
 // A second press while the first hold is still draining: the persistent run
-// is already aside, so nothing is stopped; the first hold's run ending must
-// not end the second hold's drain; the persistent run comes back once.
+// the first release started is set aside again; the first hold's runs
+// ending must not end the second hold's drain; each release starts the
+// persistent run once.
 func TestFastRePressOverContinuous(t *testing.T) {
 	h, p, _ := listeningHost(t)
 
@@ -497,21 +497,23 @@ func TestFastRePressOverContinuous(t *testing.T) {
 	p.take()
 
 	postActionWithPhase(h, t, "voice.command", "start")
-	if got := p.take(); !slices.Equal(got, []string{"run command_recognition ephemeral"}) {
-		t.Fatalf("re-press while draining: calls %v, want only the new hold's run", got)
+	if got := p.take(); !slices.Equal(got, []string{"stop command_recognition", "run command_recognition ephemeral"}) {
+		t.Fatalf("re-press while draining: calls %v, want the persistent run set aside again and the new hold's run", got)
 	}
 	postActionWithPhase(h, t, "voice.command", "stop")
 
 	p.deliverStopped() // persistent
 	p.deliverStopped() // first hold's run
+	p.deliverStopped() // persistent, started at the first release
 	wantMode(t, h, "command_hold")
-	if got := p.persistentStarts(); got != 1 {
-		t.Fatalf("the first hold's run ending restarted the persistent run (%d starts)", got)
+	if got := p.persistentStarts(); got != 3 {
+		t.Fatalf("persistent runs started = %d, want 3 (listening on, then once per release)", got)
 	}
 	p.deliverStopped() // second hold's run
 	wantMode(t, h, "continuous_sleeping")
-	if got := p.persistentStarts(); got != 2 {
-		t.Fatalf("persistent runs started = %d, want 2", got)
+	wantLive(t, p, "persistent")
+	if got := p.persistentStarts(); got != 3 {
+		t.Fatalf("the second hold's cleanup started another persistent run (%d starts)", got)
 	}
 }
 
@@ -539,8 +541,8 @@ func TestAbortOverContinuousRestoresListening(t *testing.T) {
 }
 
 // Turning continuous listening off while a released hold drains: the hold
-// ends first, the persistent run is not restarted on the way, and nothing
-// is left claiming continuous listening.
+// ends first, the persistent run its release started is stopped and not
+// restarted on the way, and nothing is left claiming continuous listening.
 func TestContinuousOffDuringHoldDrain(t *testing.T) {
 	h, p, _ := listeningHost(t)
 	postActionWithPhase(h, t, "voice.command", "start")
@@ -553,11 +555,14 @@ func TestContinuousOffDuringHoldDrain(t *testing.T) {
 	if h.sess.IsContinuousActive() {
 		t.Fatal("continuous listening still reports active")
 	}
+	if got := p.take(); !slices.Equal(got, []string{"stop command_recognition"}) {
+		t.Fatalf("toggle off during the drain: calls %v, want the persistent run stopped", got)
+	}
 	p.deliverAllStopped()
 	wantMode(t, h, "idle")
 	wantLive(t, p, "none")
-	if got := p.persistentStarts(); got != 1 {
-		t.Fatalf("turning listening off restarted the persistent run (%d starts)", got)
+	if got := p.persistentStarts(); got != 2 {
+		t.Fatalf("persistent runs started = %d, want 2 (listening on, then the release)", got)
 	}
 }
 
@@ -721,9 +726,9 @@ func TestSpeakStartedAtTheFlushDoesNotHoldUpTheCleanup(t *testing.T) {
 
 // A press that lands while the previous hold's cleanup is still running
 // (the cleanup runs on the notification goroutine, the press on its own):
-// the new hold finds the persistent run already aside and stops nothing, so
-// the old cleanup must leave it aside for the new hold rather than start it
-// beside the new hold's run; the new hold's cleanup restarts it, once.
+// the new hold sets aside the persistent run the release started, and the
+// old cleanup must leave it aside for the new hold rather than start it
+// beside the new hold's run; the new hold's release restarts it, once.
 func TestRePressDuringTheLastHoldsCleanup(t *testing.T) {
 	h, p, _ := listeningHost(t)
 	postActionWithPhase(h, t, "voice.command", "start")
@@ -740,8 +745,8 @@ func TestRePressDuringTheLastHoldsCleanup(t *testing.T) {
 		postActionWithPhase(h, t, "voice.command", "start")
 		h.finishCommandHold()
 	})
-	if got := p.take(); !slices.Equal(got, []string{"run command_recognition ephemeral"}) {
-		t.Fatalf("calls %v, want only the new hold's run", got)
+	if got := p.take(); !slices.Equal(got, []string{"stop command_recognition", "run command_recognition ephemeral"}) {
+		t.Fatalf("calls %v, want the persistent run set aside again and only the new hold's run", got)
 	}
 	wantLive(t, p, "ephemeral")
 	if !h.sess.IsCmdRecAside() {
@@ -752,8 +757,8 @@ func TestRePressDuringTheLastHoldsCleanup(t *testing.T) {
 	p.deliverAllStopped()
 	wantMode(t, h, "continuous_sleeping")
 	wantLive(t, p, "persistent")
-	if got := p.persistentStarts(); got != 2 {
-		t.Fatalf("persistent runs started = %d, want 2", got)
+	if got := p.persistentStarts(); got != 3 {
+		t.Fatalf("persistent runs started = %d, want 3 (listening on, then once per release)", got)
 	}
 }
 

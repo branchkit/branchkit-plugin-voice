@@ -287,9 +287,53 @@ func (h *Host) setCmdRecAsideForHold() {
 	}
 }
 
+// returnCmdRecAtRelease starts continuous listening's persistent run again
+// at a hold's release, so the platform captures speech from that moment: a
+// new run's microphone starts at once and is buffered while the hold's run
+// winds down. Waiting for the hold's cleanup instead lost whatever was said
+// in between (tens of milliseconds usually, up to the end-of-hold flush's
+// decode or the backstop), and losing a leading word turns "snap left" into
+// "left". The run's transcripts are held back until the cleanup has
+// restored continuous listening's mode (handleOnTranscript), so nothing said
+// after the release is resolved as the hold's command. When a dictation
+// holds the microphone or listening is off, the claim stays for the cleanup.
+func (h *Host) returnCmdRecAtRelease() {
+	if h.sess.ReturnCmdRecAtRelease() {
+		h.runCommandRecognition(false)
+		branchkit.Logf("voice", "command: restarted continuous command_recognition at the release")
+	}
+}
+
+// heldBackLimit bounds how long a transcript of the persistent run waits for
+// a released hold's cleanup. The cleanup runs on the hold's run's `stopped`
+// or the drain backstop, so this is reached only if the cleanup never runs;
+// the transcript is then resolved in whatever mode voice is in.
+const heldBackLimit = commandHoldDrainBackstop + time.Second
+
+// awaitHoldCleanup holds a persistent-run transcript that arrived after a
+// released hold's run ended but before the hold's cleanup restored the base
+// mode, so it is resolved in that mode. The platform answers one transcript
+// of a run at a time, so held transcripts are resolved in the order spoken.
+func (h *Host) awaitHoldCleanup() {
+	gate := h.sess.CmdRecHeldBack()
+	if gate == nil {
+		return
+	}
+	branchkit.Logf("voice", "on_transcript: waiting for the released hold's cleanup tr=%s", h.traceID())
+	select {
+	case <-gate:
+	case <-time.After(heldBackLimit):
+		branchkit.Logf("voice", "on_transcript: the released hold's cleanup did not run within %s; resolving now tr=%s",
+			heldBackLimit, h.traceID())
+	}
+}
+
 // restartCmdRecAfterHold brings continuous listening's persistent run back
 // once a hold that set it aside has ended, unless a dictation still holds
 // the microphone (its own end restarts it) or listening was turned off.
+// A release that could start it already did (returnCmdRecAtRelease); this
+// covers the rest: an abort, and a dictation or a re-press that kept the
+// claim at the release.
 func (h *Host) restartCmdRecAfterHold() {
 	if h.sess.ReleaseCmdRecAside() {
 		h.runCommandRecognition(false)
@@ -459,8 +503,11 @@ func (h *Host) finishCommandHold() {
 	h.sess.ClearLastMatch()
 	h.leaveCommandHold()
 	// After the mode is back, so the persistent run's first words are heard
-	// in continuous listening's mode, not the hold's.
+	// in continuous listening's mode, not the hold's: a run started here
+	// hears them after, and one started at the release has had them held
+	// back until now.
 	h.restartCmdRecAfterHold()
+	h.sess.OpenCmdRecHeldBack()
 }
 
 // leaveCommandHold returns an ended hold to the mode it covered (idle, or
@@ -550,14 +597,14 @@ func (h *Host) handleVoiceCommand(req *branchkit.OnActionRequest) (any, error) {
 		// cleanup; the backstop timer is the safety net. The run's
 		// microphone stops here, so words spoken after the release never
 		// reach it and cannot run as the hold's commands. Over continuous
-		// listening the persistent run is started again only by that
-		// cleanup, after the mode is restored, so words said between the
-		// release and the cleanup are NOT heard: usually a few tens of
-		// milliseconds, up to the flush's decode (seconds at worst) or the
-		// backstop. The trade: no post-release window
-		// in which speech runs as a command.
+		// listening the persistent run starts again now, so words said
+		// between the release and the cleanup are heard; its transcripts
+		// wait for the cleanup to restore the mode (awaitHoldCleanup).
+		// After BeginCommandHoldDrain, so the drain does not wait on the
+		// run it starts.
 		h.pipelinesStop(branchkit.PipelinesStopRequest{Name: pipeline})
 		h.sess.BeginCommandHoldDrain(commandHoldDrainBackstop, h.finishCommandHold)
+		h.returnCmdRecAtRelease()
 		return h.handled(), nil
 	}
 
@@ -566,7 +613,7 @@ func (h *Host) handleVoiceCommand(req *branchkit.OnActionRequest) (any, error) {
 	// also bumps the generation, invalidating that stale drain's cleanup.
 	// Over continuous listening the hold listens on its own ephemeral run, as
 	// push-to-talk does: the persistent run is set aside until the hold's
-	// cleanup (setCmdRecAsideForHold). Commands count while the key is down,
+	// release (setCmdRecAsideForHold, returnCmdRecAtRelease). Commands count while the key is down,
 	// a sleeping session included.
 	prevDraining, _ := h.sess.StartCommandHold()
 	if prevDraining {
@@ -1060,6 +1107,10 @@ func (h *Host) handleOnTranscript(req *branchkit.OnTranscriptRequest) (any, erro
 		branchkit.Logf("voice", "on_transcript: ignoring transcript from unexpected pipeline %q", req.Pipeline)
 		return &branchkit.OnTranscriptResponse{}, nil
 	}
+
+	// Speech right after an Option+G release, heard by the persistent run
+	// started at the release: resolved once the base mode is back.
+	h.awaitHoldCleanup()
 
 	if h.sess.DropsCommandTranscripts() {
 		branchkit.Logf("voice", "on_transcript: %d words → dropped (command_recognition suppressed) tr=%s",
