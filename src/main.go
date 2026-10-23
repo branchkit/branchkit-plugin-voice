@@ -450,6 +450,12 @@ func main() {
 		h.handlePipelineWarmed(payload.Pipeline)
 	})
 
+	// A warm that failed: the readiness panel says which engine and why
+	// rather than showing it loading for good.
+	h.plugin.OnPipelineError(func(payload branchkit.PipelineErrorEventParams) {
+		h.handlePipelineError(payload.Pipeline, payload.Error)
+	})
+
 	// Which command_recognition run is which: a hold's ephemeral run or
 	// continuous listening's persistent one (cmdrec_recovery.go).
 	h.plugin.OnPipelineStarted(func(payload branchkit.PipelineStartedEventParams) {

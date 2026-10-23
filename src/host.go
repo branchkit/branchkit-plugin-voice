@@ -156,8 +156,10 @@ type Host struct {
 
 	// Readiness panel: which stages are warm, and which typing paths are
 	// known granted.
-	warmMu      sync.Mutex
-	warmReady   map[string]bool
+	warmMu    sync.Mutex
+	warmReady map[string]bool
+	// Why a tracked engine's warm failed, until a later warm succeeds.
+	warmFailed  map[string]string
 	warmGen     int // discovery-overlay generation owning the readiness panel
 	typingMu    sync.Mutex
 	typingKnown map[string]bool // "post_event" / "secure_input" → granted (typing lands)
@@ -202,6 +204,7 @@ func newHost(p *branchkit.Plugin) *Host {
 		appProfileOverrides: map[string]string{},
 		floatPanels:         map[string]bool{},
 		warmReady:           map[string]bool{},
+		warmFailed:          map[string]string{},
 		typingKnown:         map[string]bool{},
 		recordingsViewMode:  "grouped",
 	}

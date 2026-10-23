@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/branchkit/plugin-sdk-go"
@@ -35,6 +36,7 @@ func (h *Host) startVoiceWarmup() {
 	h.warmMu.Lock()
 	for _, t := range warmTargets {
 		h.warmReady[t.pipeline] = false
+		delete(h.warmFailed, t.pipeline)
 	}
 	h.warmMu.Unlock()
 
@@ -102,33 +104,102 @@ func (h *Host) handlePipelineWarmed(pipeline string) {
 		return
 	}
 	h.warmReady[pipeline] = true
-	allReady := true
+	delete(h.warmFailed, pipeline)
+	h.warmMu.Unlock()
+
+	branchkit.Logf("voice", "warmup: %s ready (settled=%v)", pipeline, h.warmupSettled())
+	h.refreshWarmup()
+}
+
+// warmFailedPrefix starts the error the platform reports in
+// _platform.pipeline.error for a failed warm. The same event also reports a
+// failed run, which is not a warm failure.
+const warmFailedPrefix = "warm failed:"
+
+// handlePipelineError records a tracked engine whose warm failed, so its row
+// says so instead of "Loading…" for good. The platform reports a failed warm
+// as _platform.pipeline.error with no _platform.pipeline.warmed (on Linux and
+// Windows, for one, when a stage does not resolve there). Any other error is
+// a run's, even one that arrives while the engine is still warming, and the
+// run's own stop handles it.
+func (h *Host) handlePipelineError(pipeline, errText string) {
+	if !strings.HasPrefix(errText, warmFailedPrefix) {
+		return
+	}
+	if isDictationPipeline(pipeline) {
+		// No point asking the user to keep talking to a stage that will not
+		// start.
+		h.closeDictationWarming()
+	}
+	h.warmMu.Lock()
+	ready, tracked := h.warmReady[pipeline]
+	if !tracked || ready {
+		h.warmMu.Unlock()
+		return
+	}
+	h.warmFailed[pipeline] = errText
+	h.warmMu.Unlock()
+	branchkit.Logf("voice", "warmup: %s could not start: %s", pipeline, errText)
+	h.refreshWarmup()
+}
+
+// warmupSettled reports whether every tracked engine is ready or has failed.
+func (h *Host) warmupSettled() bool {
+	h.warmMu.Lock()
+	defer h.warmMu.Unlock()
 	for _, t := range warmTargets {
-		if !h.warmReady[t.pipeline] {
-			allReady = false
-			break
+		if _, failed := h.warmFailed[t.pipeline]; !h.warmReady[t.pipeline] && !failed {
+			return false
+		}
+	}
+	return true
+}
+
+// warmupTitle is the panel's title once it has settled: ready, or which
+// engine could not start.
+func (h *Host) warmupTitle() string {
+	h.warmMu.Lock()
+	var failed []string
+	for _, t := range warmTargets {
+		if _, ok := h.warmFailed[t.pipeline]; ok {
+			failed = append(failed, t.label)
 		}
 	}
 	h.warmMu.Unlock()
+	if len(failed) == 0 {
+		return h.readyTitle()
+	}
+	return strings.Join(failed, " and ") + " couldn't start"
+}
 
-	branchkit.Logf("voice", "warmup: %s ready (all=%v)", pipeline, allReady)
+// warmupHeading is the readiness panel's title and spoken phrase: warming up
+// until every engine is ready or has failed, then the settled title.
+func (h *Host) warmupHeading() (string, string) {
+	if !h.warmupSettled() {
+		return "Warming up voice…", "warming up voice"
+	}
+	title := h.warmupTitle()
+	return title, title
+}
 
-	if allReady {
-		gen := h.warmGen
-		h.hud.UpdateOverlay(gen, branchkit.OutputKindProgress, h.readyTitle(), h.readyTitle(), h.readinessSections())
-		// A blocked keyboard is the one thing worth reading here; give it
-		// time. A clean panel goes as quickly as before.
-		hold := 1800 * time.Millisecond
-		if h.typingBlockReason() != "" {
-			hold = 8 * time.Second
-		}
-		go func() {
-			time.Sleep(hold)
-			h.hud.CloseOverlay(gen)
-		}()
+// refreshWarmup redraws the readiness panel and, once it has settled, gives
+// it its final title and closes it: quickly when all is well, after long
+// enough to read when something could not start or typing is blocked.
+func (h *Host) refreshWarmup() {
+	gen := h.warmGen
+	title, phrase := h.warmupHeading()
+	h.hud.UpdateOverlay(gen, branchkit.OutputKindProgress, title, phrase, h.readinessSections())
+	if !h.warmupSettled() {
 		return
 	}
-	h.hud.UpdateOverlay(h.warmGen, branchkit.OutputKindProgress, "Warming up voice…", "warming up voice", h.readinessSections())
+	hold := 1800 * time.Millisecond
+	if title != "Voice ready" {
+		hold = 8 * time.Second
+	}
+	go func() {
+		time.Sleep(hold)
+		h.hud.CloseOverlay(gen)
+	}()
 }
 
 // handlePipelineWarming is a run that has to start its stage before it can
@@ -207,6 +278,8 @@ func (h *Host) readinessSections() []branchkit.OutputSection {
 		status := "Loading…"
 		if h.warmReady[t.pipeline] {
 			status = "Ready ✓"
+		} else if why, failed := h.warmFailed[t.pipeline]; failed {
+			status = "Couldn't start: " + why
 		}
 		st := status
 		items = append(items, branchkit.OutputItem{
@@ -247,21 +320,7 @@ func (h *Host) handlePermissionChanged(permission string, granted bool) {
 	h.typingKnown[permission] = granted
 	h.typingMu.Unlock()
 	if gen := h.warmGen; gen != 0 {
-		h.warmMu.Lock()
-		all := true
-		for _, t := range warmTargets {
-			if !h.warmReady[t.pipeline] {
-				all = false
-				break
-			}
-		}
-		h.warmMu.Unlock()
-		title := "Warming up voice…"
-		phrase := "warming up voice"
-		if all {
-			title = h.readyTitle()
-			phrase = title
-		}
+		title, phrase := h.warmupHeading()
 		h.hud.UpdateOverlay(gen, branchkit.OutputKindProgress, title, phrase, h.readinessSections())
 	}
 }

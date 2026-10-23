@@ -926,6 +926,9 @@
         "pattern": "_platform.pipeline.warmed"
       },
       {
+        "pattern": "_platform.pipeline.error"
+      },
+      {
         "pattern": "_platform.permission.changed"
       }
     ]
