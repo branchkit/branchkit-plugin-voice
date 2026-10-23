@@ -166,6 +166,42 @@ func TestSetupDownloadErrorOnlyVoicesStandingFailure(t *testing.T) {
 	}
 }
 
+// "Download Recommended" queues two models: the first one's failure must
+// still show once the queue has moved on to the second.
+func TestAFailureOutlivesTheNextQueuedDownload(t *testing.T) {
+	small := "openai_whisper-small.en"
+	cmd := "voice/" + defaultCommandModel
+	running := &ModelDownloadData{
+		Downloading: true, Progress: 0.2, Model: cmd,
+		Failures: map[string]string{"voice/" + small: "checksum mismatch"},
+	}
+	if got := setupDownloadError(running, "voice/", small, nil); got != "checksum mismatch" {
+		t.Errorf("setup, next download running: got %q", got)
+	}
+	if v := downloadOf(running, "voice/"+small); v.Failed != "checksum mismatch" || v.Active {
+		t.Errorf("button of the failed model: %+v", v)
+	}
+	if v := downloadOf(running, cmd); !v.Active || v.Failed != "" {
+		t.Errorf("button of the running model: %+v", v)
+	}
+	done := &ModelDownloadData{Progress: 1, Model: cmd, Failures: running.Failures}
+	if got := setupDownloadError(done, "voice/", small, map[string]string{defaultCommandModel: "153 MB"}); got != "checksum mismatch" {
+		t.Errorf("setup, next download done: got %q", got)
+	}
+	// Another plugin's failure, kept beside voice's, is not voice's to show.
+	other := &ModelDownloadData{Model: cmd, Downloading: true, Failures: map[string]string{"announcements/kokoro": "disk full"}}
+	if got := setupDownloadError(other, "voice/", small, nil); got != "" {
+		t.Errorf("another plugin's failure: got %q", got)
+	}
+	// A failed model since downloaded no longer stands in the way.
+	if got := setupDownloadError(done, "voice/", small, map[string]string{small: "466 MB"}); got != "" {
+		t.Errorf("failed model since downloaded: got %q", got)
+	}
+	if md := parseModelDownload(json.RawMessage(`{"singleton":{"downloading":false,"progress":0,"failures":{"voice/x":"why"}}}`)); md.Failures["voice/x"] != "why" {
+		t.Errorf("parse failures: %+v", md)
+	}
+}
+
 func TestReporterSendsOnlyChangesAndRetriesAFailure(t *testing.T) {
 	var sent []string
 	fail := false

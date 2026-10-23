@@ -57,18 +57,41 @@ type ModelDownloadData struct {
 	// Error is why the last download of Model stopped short, in the
 	// downloader's words; empty unless it failed.
 	Error string `json:"error,omitempty"`
+	// Failures is every model whose last download failed, by ref, with its
+	// reason. Error covers only Model, and the platform's queue moves Model
+	// on to the next download the moment one fails ("Download Recommended"
+	// asks for two), so an earlier failure is read from here. A model's
+	// entry goes when it is asked for again or arrives.
+	Failures map[string]string `json:"failures,omitempty"`
+}
+
+// failureOf is why ref's last download failed, or "".
+func (dl *ModelDownloadData) failureOf(ref string) string {
+	if dl == nil || ref == "" {
+		return ""
+	}
+	if dl.Model == ref {
+		if dl.Downloading {
+			return ""
+		}
+		if dl.Error != "" {
+			return dl.Error
+		}
+	}
+	return dl.Failures[ref]
 }
 
 // downloadOf is ref's download as a Download button shows it: active only
-// while the platform is fetching that model.
+// while the platform is fetching that model, failed while its last download
+// stands failed.
 func downloadOf(dl *ModelDownloadData, ref string) views.ModelDownloadView {
-	if dl == nil || dl.Model != ref {
+	if dl == nil {
 		return views.ModelDownloadView{}
 	}
-	if !dl.Downloading {
-		return views.ModelDownloadView{Failed: dl.Error}
+	if dl.Model == ref && dl.Downloading {
+		return views.ModelDownloadView{Active: true, Pct: int(dl.Progress*100 + 0.5)}
 	}
-	return views.ModelDownloadView{Active: true, Pct: int(dl.Progress*100 + 0.5)}
+	return views.ModelDownloadView{Failed: dl.failureOf(ref)}
 }
 
 func modelDownloadFromCollection(data map[string]json.RawMessage) *ModelDownloadData {

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -176,7 +177,7 @@ func (h *Host) readModelDownload() ModelDownloadData {
 // its singleton id.
 func parseModelDownload(raw json.RawMessage) ModelDownloadData {
 	var md ModelDownloadData
-	if json.Unmarshal(raw, &md) == nil && (md.Downloading || md.Progress > 0 || md.Error != "") {
+	if json.Unmarshal(raw, &md) == nil && (md.Downloading || md.Progress > 0 || md.Error != "" || len(md.Failures) > 0) {
 		return md
 	}
 	var byID map[string]ModelDownloadData
@@ -337,21 +338,40 @@ func otherPluginDownload(dl *ModelDownloadData, refPrefix string) string {
 // only while it still stands in the way: the failed model is not on disk,
 // and, for a dictation model, the chosen dictation model is not on disk
 // either — picking a model already downloaded starts no new download, so
-// the stale record would otherwise stay until an unrelated one began.
+// the failure would otherwise stay until that model was asked for again.
+// The record's current model is checked first, then every earlier failure
+// the platform keeps beside it: "Download Recommended" queues two models,
+// and the second one starting must not hide why the first one stopped.
 func setupDownloadError(dl *ModelDownloadData, refPrefix, chosen string, onDisk map[string]string) string {
-	if dl == nil || dl.Error == "" || !strings.HasPrefix(dl.Model, refPrefix) {
+	if dl == nil {
 		return ""
 	}
-	failed := strings.TrimPrefix(dl.Model, refPrefix)
-	if _, ok := onDisk[failed]; ok {
-		return ""
-	}
-	if !isCommandModel(failed) {
-		if _, ok := onDisk[chosen]; ok {
-			return ""
+	refs := []string{dl.Model}
+	var earlier []string
+	for ref := range dl.Failures {
+		if ref != dl.Model {
+			earlier = append(earlier, ref)
 		}
 	}
-	return dl.Error
+	sort.Strings(earlier)
+	refs = append(refs, earlier...)
+	for _, ref := range refs {
+		why := dl.failureOf(ref)
+		if why == "" || !strings.HasPrefix(ref, refPrefix) {
+			continue
+		}
+		failed := strings.TrimPrefix(ref, refPrefix)
+		if _, ok := onDisk[failed]; ok {
+			continue
+		}
+		if !isCommandModel(failed) {
+			if _, ok := onDisk[chosen]; ok {
+				continue
+			}
+		}
+		return why
+	}
+	return ""
 }
 
 // activeKey returns the chord bound to an action, from the platform's
