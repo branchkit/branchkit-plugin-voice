@@ -8,6 +8,7 @@
     "privileges": [
       "input",
       "dispatch",
+      "calibration",
       "microphone",
       "events.speech",
       "questions.answer",
