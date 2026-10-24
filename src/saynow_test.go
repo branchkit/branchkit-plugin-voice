@@ -46,7 +46,7 @@ func TestSayNowView(t *testing.T) {
 	if v.Rows[0].Signal == v.Rows[1].Signal {
 		t.Error("each row needs its own answer box signal")
 	}
-	if v.Rows[0].AudioURL != "/plugins/voice/data?file=calibration-capture%2Fsaynow-1%2Fseg_00000.wav" {
+	if v.Rows[0].AudioURL != "plugins/voice/data?file=calibration-capture%2Fsaynow-1%2Fseg_00000.wav" {
 		t.Errorf("audio url: %s", v.Rows[0].AudioURL)
 	}
 }

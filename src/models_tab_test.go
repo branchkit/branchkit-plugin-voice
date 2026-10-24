@@ -100,7 +100,7 @@ func TestModelsViewData(t *testing.T) {
 		t.Errorf("columns: %v", data.Columns)
 	}
 	d := data.Disagreements[0]
-	if d.Said != "snap left" || d.AudioURL != "/plugins/voice/data?file=calibration-capture%2Fg%2Fseg_1.wav" {
+	if d.Said != "snap left" || d.AudioURL != "plugins/voice/data?file=calibration-capture%2Fg%2Fseg_1.wav" {
 		t.Errorf("row: %+v", d)
 	}
 	if len(d.Cells) != 2 || !d.Cells[0].Right || d.Cells[1].Right || d.Cells[1].Heard != "snap eight" {

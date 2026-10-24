@@ -79,7 +79,7 @@ func sayNowView(armed bool, key, err string, models []commandModel, pending []sa
 	for i, c := range pending {
 		row := views.SayNowRow{
 			File:     c.File,
-			AudioURL: "/plugins/voice/data?file=" + url.QueryEscape(c.Audio),
+			AudioURL: "plugins/voice/data?file=" + url.QueryEscape(c.Audio),
 			Signal:   fmt.Sprintf("sayNowOther%d", i),
 		}
 		seen := map[string]bool{}
@@ -175,7 +175,7 @@ func modelsViewData(models []commandModel, onDisk map[string]string, inUse strin
 	for _, d := range run.Report.Disagreements {
 		row := views.DisagreementRow{
 			Said:     compare.Normalize(d.Clip.Target),
-			AudioURL: "/plugins/voice/data?file=" + url.QueryEscape(d.Clip.Audio),
+			AudioURL: "plugins/voice/data?file=" + url.QueryEscape(d.Clip.Audio),
 		}
 		for _, m := range cols {
 			row.Cells = append(row.Cells, views.HeardCell{Heard: compare.Normalize(d.Heard[m]), Right: d.Right[m]})
@@ -305,5 +305,5 @@ func scoreDictationCards(cards []views.ModelCard, r *DictationReport) {
 
 // dataAudioURL plays a recording from this plugin's data dir on a tab.
 func dataAudioURL(rel string) string {
-	return "/plugins/voice/data?file=" + url.QueryEscape(rel)
+	return "plugins/voice/data?file=" + url.QueryEscape(rel)
 }

@@ -942,7 +942,7 @@ func (h *Host) buildRecordings() ([]views.RecordingGroup, []views.RecordingView,
 			Matched:     e.Matched,
 			When:        recordingWhen(e.Ts),
 			File:        e.File,
-			AudioURL:    "/plugins/voice/data?file=" + url.QueryEscape(calibration.DataRelPath(e.File)),
+			AudioURL:    "plugins/voice/data?file=" + url.QueryEscape(calibration.DataRelPath(e.File)),
 			Labeled:     e.Target != "",
 			Disposition: e.Disposition,
 		}

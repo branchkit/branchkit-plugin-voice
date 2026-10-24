@@ -53,9 +53,9 @@ func TestModelsTabRunningAndCompared(t *testing.T) {
 			{Name: "light", Label: "Light", Title: "Light", Downloaded: true, InUse: true, Scored: true, Right: 8, Total: 11, MedianMs: "7 ms"},
 		},
 		Columns:       []string{"Standard", "Light"},
-		Disagreements: []DisagreementRow{{Said: "snap left", AudioURL: "/plugins/voice/data?file=x.wav", Cells: []HeardCell{{Heard: "snap left", Right: true}, {Heard: "snap eight"}}}},
+		Disagreements: []DisagreementRow{{Said: "snap left", AudioURL: "plugins/voice/data?file=x.wav", Cells: []HeardCell{{Heard: "snap left", Right: true}, {Heard: "snap eight"}}}},
 	})
-	for _, want := range []string{"Compared on 11 confirmed recordings", "1 left out", "Run again", "Best on your voice", `class="small primary"`, "11 ms per recording", "Where they disagree · 1", `src="/plugins/voice/data?file=x.wav"`, "snap eight"} {
+	for _, want := range []string{"Compared on 11 confirmed recordings", "1 left out", "Run again", "Best on your voice", `class="small primary"`, "11 ms per recording", "Where they disagree · 1", `src="plugins/voice/data?file=x.wav"`, "snap eight"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -89,7 +89,7 @@ func TestModelsTabSayNow(t *testing.T) {
 	}
 	html = renderModels(t, ModelsViewData{SayNow: SayNowView{
 		Columns: []string{"Standard", "Light"},
-		Rows: []SayNowRow{{File: "saynow-1/seg_0.wav", AudioURL: "/plugins/voice/data?file=a.wav",
+		Rows: []SayNowRow{{File: "saynow-1/seg_0.wav", AudioURL: "plugins/voice/data?file=a.wav",
 			Heard: []string{"snap right", ""}, Choices: []string{"snap right"}, Signal: "sayNowOther0"}},
 	}})
 	for _, want := range []string{"Say a phrase", "say_now/start", "Said just now", "nothing", "Which was right?", "say_now/confirm", `data-bind="sayNowOther0"`, "$sayNowOther0", "say_now/dismiss", "Discard"} {
@@ -111,8 +111,8 @@ func TestModelsTabDictationCompare(t *testing.T) {
 		Dictation: []ModelCard{{Name: "large", Title: "Large", WordsPct: "97%", MedianMs: "1.1 s", Best: true, Downloaded: true}, {Name: "small", Title: "Small", Downloaded: true, InUse: true}},
 		DictationCompare: DictationCompareView{
 			Recorded: 4, Compared: true, Columns: []string{"Large", "Small"},
-			Pending: []ReadClipRow{{File: "dictation-recordings/s/2.wav", AudioURL: "/plugins/voice/data?file=x", Sentence: "Goodbye."}},
-			Rows:    []DictationRow{{Sentence: "It is a fixed set.", AudioURL: "/plugins/voice/data?file=y", Cells: []DictationCell{{Heard: "It is a fixed set."}, {Heard: "It is a fix set.", Errors: 1}}}},
+			Pending: []ReadClipRow{{File: "dictation-recordings/s/2.wav", AudioURL: "plugins/voice/data?file=x", Sentence: "Goodbye."}},
+			Rows:    []DictationRow{{Sentence: "It is a fixed set.", AudioURL: "plugins/voice/data?file=y", Cells: []DictationCell{{Heard: "It is a fixed set."}, {Heard: "It is a fix set.", Errors: 1}}}},
 		},
 	})
 	for _, want := range []string{"4 sentences recorded", "read_sentence/start", "read_sentence/keep", "read_sentence/discard", "dictation_models/compare", "Run again", "97%", "of words right", "1.1 s per sentence", "Best on your voice", "Where they differ · 1", "1 wrong", "It is a fix set."} {
