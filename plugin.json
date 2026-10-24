@@ -362,14 +362,14 @@
           {
             "key": "dictation_enabled",
             "label": "Dictation",
-            "description": "Hold Option+T to dictate. Off means the dictation pipeline never starts.",
+            "description": "Hold the dictation key (Option+T on a Mac, Alt+T on Linux and Windows, unless you changed it) to dictate. Off means the dictation pipeline never starts.",
             "field_type": "boolean",
             "default": true
           },
           {
             "key": "voice_commands_enabled",
             "label": "Voice commands",
-            "description": "Hold Option+G to speak commands. Off means the command engine never starts.",
+            "description": "Hold the command key (Option+G on a Mac, Alt+G on Linux and Windows, unless you changed it) to speak commands. Off means the command engine never starts.",
             "field_type": "boolean",
             "default": true
           },
@@ -1207,7 +1207,7 @@
       ]
     }
   },
-  "default_footer": "Say 'show commands' or press the help key (Option+B by default) to toggle",
+  "default_footer": "Say 'show commands' or press the help key (by default Option+B on a Mac, Alt+B on Linux and Windows) to toggle",
   "hud_targets": [
     "commands",
     "entities",

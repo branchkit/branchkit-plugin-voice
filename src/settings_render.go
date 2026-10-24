@@ -331,6 +331,7 @@ func (h *Host) renderCalibration(calibActive bool, hasPhonetics bool, game Calib
 		ElapsedSecs:       fmt.Sprintf("%.1fs", game.ElapsedSecs),
 		HeardBuffer:       game.HeardBuffer,
 		MatchStatus:       matchStatus,
+		CommandKey:        keyName("opt+g"),
 		FrameCount:        frameCount,
 		TrialElapsed:      trialElapsed,
 		CanGoBack:         game.CurrentIndex > 0,

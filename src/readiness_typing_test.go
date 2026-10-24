@@ -26,7 +26,7 @@ func TestTypingRowFollowsTheShellsReport(t *testing.T) {
 		t.Fatalf("unreported = plain ready title, got %q", got)
 	}
 
-	h.handlePermissionChanged("microphone", false) // not ours
+	h.handlePermissionChanged("microphone", true) // its own row, not Typing's
 	if row, ok := h.typingItem(); ok {
 		t.Fatalf("an unrelated permission must not create the row, got %+v", row)
 	}

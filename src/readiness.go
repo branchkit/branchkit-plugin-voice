@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 	"time"
 
@@ -289,6 +290,9 @@ func (h *Host) readinessSections() []branchkit.OutputSection {
 			Subtitle: &st,
 		})
 	}
+	if row, ok := h.microphoneItem(); ok {
+		items = append(items, row)
+	}
 	if row, ok := h.typingItem(); ok {
 		items = append(items, row)
 	}
@@ -313,12 +317,16 @@ func (h *Host) readinessSections() []branchkit.OutputSection {
 func (h *Host) handlePermissionChanged(permission string, granted bool) {
 	switch permission {
 	case "post_event", "secure_input":
+		h.typingMu.Lock()
+		h.typingKnown[permission] = granted
+		h.typingMu.Unlock()
+	case "microphone":
+		h.typingMu.Lock()
+		h.micKnown, h.micGranted = true, granted
+		h.typingMu.Unlock()
 	default:
 		return
 	}
-	h.typingMu.Lock()
-	h.typingKnown[permission] = granted
-	h.typingMu.Unlock()
 	if gen := h.warmGen; gen != 0 {
 		title, phrase := h.warmupHeading()
 		h.hud.UpdateOverlay(gen, branchkit.OutputKindProgress, title, phrase, h.readinessSections())
@@ -339,9 +347,50 @@ func (h *Host) typingBlockReason() string {
 	return ""
 }
 
+// microphoneBlockReason is why a hold would capture silence right now: the
+// OS does not let BranchKit use the microphone. "" when it does, or when
+// this OS reports no such switch. The fix is named in the OS's words.
+//
+// The report is one boolean, so on macOS "not asked yet" arrives as false
+// too, and the text has to be right in both states: macOS asks on the
+// first capture, and only once denied is the switch in System Settings.
+func (h *Host) microphoneBlockReason() string {
+	h.typingMu.Lock()
+	blocked := h.micKnown && !h.micGranted
+	h.typingMu.Unlock()
+	if !blocked {
+		return ""
+	}
+	return microphoneBlockedText(runtime.GOOS)
+}
+
+func microphoneBlockedText(goos string) string {
+	switch goos {
+	case "windows":
+		return "Not allowed — turn on Settings › Privacy & security › Microphone, including \"Let desktop apps access your microphone\""
+	case "darwin":
+		return "Not allowed yet — allow BranchKit when macOS asks, or turn it on under System Settings › Privacy & Security › Microphone"
+	default:
+		return "Not allowed — the system's microphone privacy setting is off for BranchKit"
+	}
+}
+
+// warnIfMicrophoneBlocked says so when a hold starts without the
+// microphone: the hold would otherwise record silence and fail without a
+// word.
+func (h *Host) warnIfMicrophoneBlocked() {
+	if why := h.microphoneBlockReason(); why != "" {
+		h.reportProblem("Microphone not allowed", why)
+	}
+}
+
 // readyTitle is the panel title once every engine is warm: plain "Voice
-// ready" when typing will land, and the honest version when it will not.
+// ready" when the microphone hears and typing will land, and the honest
+// version when either will not.
 func (h *Host) readyTitle() string {
+	if h.microphoneBlockReason() != "" {
+		return "Voice ready — microphone not allowed"
+	}
 	if h.typingBlockReason() != "" {
 		return "Voice ready — typing blocked"
 	}
@@ -367,6 +416,28 @@ func (h *Host) typingItem() (branchkit.OutputItem, bool) {
 		ID:       "typing",
 		Title:    "Typing",
 		Phrase:   "typing " + status,
+		Subtitle: &st,
+	}, true
+}
+
+// microphoneItem is the readiness panel's microphone row, present once the
+// host has reported the OS's microphone switch.
+func (h *Host) microphoneItem() (branchkit.OutputItem, bool) {
+	h.typingMu.Lock()
+	known := h.micKnown
+	h.typingMu.Unlock()
+	if !known {
+		return branchkit.OutputItem{}, false
+	}
+	status := h.microphoneBlockReason()
+	if status == "" {
+		status = "Ready ✓"
+	}
+	st := status
+	return branchkit.OutputItem{
+		ID:       "microphone",
+		Title:    "Microphone",
+		Phrase:   "microphone " + status,
 		Subtitle: &st,
 	}, true
 }

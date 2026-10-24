@@ -743,7 +743,7 @@ templ calLiveTrial(data CalibrationViewData) {
 				<span class="cal-heard-label">Heard:</span> <span class="cal-heard-text">{ data.HeardBuffer }</span>
 			} else {
 				if !data.MatchStatus {
-					<span class="cal-heard-waiting">Hold Option+G and speak</span>
+					<span class="cal-heard-waiting">Hold { data.CommandKey } and speak</span>
 				}
 			}
 		</div>
@@ -926,7 +926,7 @@ templ Calibration(data CalibrationViewData) {
 							@calLiveTrial(data)
 						} else {
 							<div class="cal-trial-empty">
-								<p>Select a command to test it — hold Option+G and say its prompt. Or use <strong>Test all</strong> to walk everything.</p>
+								<p>Select a command to test it — hold { data.CommandKey } and say its prompt. Or use <strong>Test all</strong> to walk everything.</p>
 							</div>
 						}
 						if len(data.DockedClips) > 0 {

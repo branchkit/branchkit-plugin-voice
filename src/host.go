@@ -166,6 +166,10 @@ type Host struct {
 	warmGen     int // discovery-overlay generation owning the readiness panel
 	typingMu    sync.Mutex
 	typingKnown map[string]bool // "post_event" / "secure_input" → granted (typing lands)
+	// micKnown / micGranted: the OS microphone privacy switch, as the host
+	// reports it ("microphone"). Unreported on an OS with no such switch.
+	micKnown   bool
+	micGranted bool
 
 	// The overlay saying dictation is still starting, while one is up
 	// (0 otherwise). Its own lock: opening an overlay renders the HUD, and

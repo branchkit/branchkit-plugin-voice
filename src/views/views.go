@@ -89,9 +89,11 @@ type CalibrationViewData struct {
 	ElapsedSecs    string
 	HeardBuffer    string
 	MatchStatus    bool
-	FrameCount     int
-	TrialElapsed   string
-	CanGoBack      bool
+	// CommandKey is the command hold key in this OS's words ("⌥G", "Alt+G").
+	CommandKey   string
+	FrameCount   int
+	TrialElapsed string
+	CanGoBack    bool
 
 	// ShowBanner is the post-stop "a sitting just closed" state: the catalog is
 	// shown with a "Tested N commands this session · View report" banner.

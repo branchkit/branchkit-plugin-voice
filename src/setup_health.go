@@ -287,6 +287,7 @@ func (h *Host) holdBegan() {
 	h.health.mu.Lock()
 	h.health.holdStart = time.Now().UnixMilli()
 	h.health.mu.Unlock()
+	h.warnIfMicrophoneBlocked()
 }
 
 // holdEnded asks the platform how loud the hold was and records the

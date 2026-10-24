@@ -408,6 +408,16 @@ func activeKey(active json.RawMessage, action string) string {
 	return ""
 }
 
+// keyName is a default chord written out in this OS's words, for prose:
+// "⌥T" on macOS, "Alt+T" elsewhere.
+func keyName(chord string) string {
+	sep := "+"
+	if runtime.GOOS == "darwin" {
+		sep = ""
+	}
+	return strings.Join(keyCaps(chord, runtime.GOOS), sep)
+}
+
 // keyCaps renders a chord in this OS's own words: glyphs on macOS, names
 // elsewhere, modifiers in the order each OS writes them.
 func keyCaps(chord, goos string) []string {

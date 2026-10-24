@@ -156,7 +156,7 @@ func (h *Host) renderDictationHistoryHTML() string {
 	entries := h.snapshotDictations()
 	if len(entries) == 0 {
 		return `<div style="padding:14px;opacity:.6;font-size:12px">` +
-			`No dictations yet this session. Hold ⌥T and speak.</div>`
+			`No dictations yet this session. Hold ` + keyName("opt+t") + ` and speak.</div>`
 	}
 	var b strings.Builder
 	b.WriteString(`<div data-signals:fix-row__ifmissing="''" ` +
