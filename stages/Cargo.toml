@@ -13,7 +13,7 @@ resolver = "2"
 [workspace.dependencies]
 # The stage SDK at the commit the app pins. Moving it is a deliberate bump,
 # as for any plugin that ships a stage.
-branchkit-stage-sdk = { git = "https://github.com/branchkit/stage-sdk", rev = "d9c06d3c7982df0da0488f195ace14315eb0e7e8" }
+branchkit-stage-sdk = { git = "https://github.com/branchkit/stage-sdk", rev = "b1fc86443777b2b7ee39eb9e5b9fd755d182faaf" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
