@@ -32,25 +32,30 @@ func SpokenPunctuation(text string) string {
 	var out strings.Builder
 	last := 0
 	follow := followNone
+	// spoken is the length of out through the last mark the user said;
+	// trimming Whisper's punctuation never reaches into it ("hi period
+	// close quote" keeps its period).
+	spoken := 0
 	for _, m := range matches {
 		start, end := m[0], m[1]
-		if start < last || spokenWordIsLiteral(text, start, end) {
+		if start < last || inHyphenated(text, start, end) || spokenWordIsLiteral(text, start, end) {
 			continue
 		}
 		out.WriteString(applyFollow(text[last:start], &follow))
 		sm := spokenMarks[normalizeSpokenMark(text[m[2]:m[3]])]
-		if sm.opens {
-			written := strings.TrimRight(out.String(), " \t")
-			out.Reset()
-			out.WriteString(written)
-			if r, _ := utf8.DecodeLastRuneInString(written); written != "" && !strings.ContainsRune("([{\"\n", r) {
-				out.WriteByte(' ')
-			}
-		} else {
-			written := strings.TrimRight(out.String(), " \t")
-			written = strings.TrimRight(written, whisperPunctuation+" \t")
-			out.Reset()
-			out.WriteString(written)
+		written := out.String()
+		kept, tail := written[:spoken], strings.TrimRight(written[spoken:], " \t")
+		if sm.absorbs() {
+			tail = strings.TrimRight(tail, whisperPunctuation+" \t")
+		}
+		written = kept + tail
+		if kept != "" && tail == "" {
+			written = strings.TrimRight(written, " \t")
+		}
+		out.Reset()
+		out.WriteString(written)
+		if r, _ := utf8.DecodeLastRuneInString(written); sm.opens && written != "" && !strings.ContainsRune("([{\"\n", r) {
+			out.WriteByte(' ')
 		}
 		out.WriteString(sm.mark)
 		// Skip Whisper's punctuation after the word, and the space before
@@ -63,16 +68,14 @@ func SpokenPunctuation(text string) string {
 			}
 			last += size
 		}
-		switch {
-		case sm.opens:
-			follow = followNone
-		case sm.mark == "." || sm.mark == "?" || sm.mark == "!":
+		switch sm.mark {
+		case ".", "?", "!":
 			follow = followCapital
-		case sm.mark == "," || sm.mark == ";" || sm.mark == ":":
+		case ",", ";", ":":
 			follow = followLower
 		default:
-			// A closing quote or parenthesis keeps whatever the mark
-			// before it asked for: `said "hi." Then` capitalises.
+			// A quote or parenthesis keeps whatever the mark before it
+			// asked for: `said "hi." Then` and `. "Hello` capitalise.
 		}
 		if last < len(text) && !sm.opens {
 			r, _ := utf8.DecodeRuneInString(text[last:])
@@ -80,6 +83,7 @@ func SpokenPunctuation(text string) string {
 				out.WriteByte(' ')
 			}
 		}
+		spoken = out.Len()
 	}
 	out.WriteString(applyFollow(text[last:], &follow))
 	return out.String()
@@ -94,6 +98,18 @@ const whisperPunctuation = ",.;:!?…"
 type spokenMark struct {
 	mark  string
 	opens bool
+}
+
+// absorbs reports whether the mark replaces the punctuation Whisper wrote
+// before it: a sentence mark does ("Thanks. Period" is one period), a quote
+// or parenthesis does not ("hi. Close quote" keeps Whisper's period).
+func (sm spokenMark) absorbs() bool { return !sm.opens && sm.mark != `"` && sm.mark != ")" }
+
+// inHyphenated reports whether the word at text[start:end] is part of a
+// hyphenated word Whisper wrote ("comma-separated", "period-appropriate"):
+// regexp's \b counts a hyphen as a boundary.
+func inHyphenated(text string, start, end int) bool {
+	return (start > 0 && text[start-1] == '-') || (end < len(text) && text[end] == '-')
 }
 
 // spokenMarks maps each spoken form, normalised by normalizeSpokenMark, to
@@ -169,11 +185,16 @@ const (
 	followLower
 )
 
-// applyFollow applies f to the first word of s. A segment with no letter in
-// it passes f on to the next one.
+// applyFollow applies f to the first word of s, when that word starts with
+// a letter ("3pm" stays as it is). A segment of only spaces passes f on to
+// the next one.
 func applyFollow(s string, f *follow) string {
-	i := strings.IndexFunc(s, unicode.IsLetter)
+	i := strings.IndexFunc(s, func(r rune) bool { return !unicode.IsSpace(r) })
 	if i < 0 {
+		return s
+	}
+	if r, _ := utf8.DecodeRuneInString(s[i:]); !unicode.IsLetter(r) {
+		*f = followNone
 		return s
 	}
 	switch *f {

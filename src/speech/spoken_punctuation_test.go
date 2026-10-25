@@ -31,6 +31,13 @@ func TestSpokenPunctuation(t *testing.T) {
 		{"mark word inside another word is left", "commas and periods", "commas and periods"},
 		{"colon is not read inside semicolon", "semicolon", ";"},
 		{"several marks in a row", "wait comma what question mark", "wait, what?"},
+		{"a closing quote keeps the user's period", "he said open quote hi period close quote then left", `he said "hi." Then left`},
+		{"a closing paren keeps the user's question mark", "see above question mark close paren", "see above?)"},
+		{"a closing quote keeps Whisper's period", "he said hi. Close quote", `he said hi."`},
+		{"capital after a sentence mark crosses an open quote", "done period open quote hello close quote", `done. "Hello"`},
+		{"a hyphenated word Whisper wrote is left", "the values are comma-separated", "the values are comma-separated"},
+		{"hyphen after the word", "period-appropriate costumes", "period-appropriate costumes"},
+		{"a number after a sentence mark keeps its case", "we're done period 3pm works", "we're done. 3pm works"},
 		{"Unicode around marks", "café comma naïve period", "café, naïve."},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
