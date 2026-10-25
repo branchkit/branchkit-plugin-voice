@@ -45,9 +45,7 @@ func SpokenPunctuation(text string) string {
 		sm := spokenMarks[normalizeSpokenMark(text[m[2]:m[3]])]
 		written := out.String()
 		kept, tail := written[:spoken], strings.TrimRight(written[spoken:], " \t")
-		if sm.absorbs() {
-			tail = strings.TrimRight(tail, whisperPunctuation+" \t")
-		}
+		tail = strings.TrimRight(tail, sm.absorbs()+" \t")
 		written = kept + tail
 		if kept != "" && tail == "" {
 			written = strings.TrimRight(written, " \t")
@@ -61,25 +59,32 @@ func SpokenPunctuation(text string) string {
 		// Skip Whisper's punctuation after the word, and the space before
 		// whatever comes next.
 		last = end
+		spaced := false
 		for last < len(text) {
 			r, size := utf8.DecodeRuneInString(text[last:])
 			if !strings.ContainsRune(whisperPunctuation+" \t", r) {
 				break
 			}
+			spaced = spaced || r == ' ' || r == '\t'
 			last += size
 		}
-		switch sm.mark {
-		case ".", "?", "!":
+		switch {
+		case sm.mark == "." || sm.mark == "?" || sm.mark == "!":
 			follow = followCapital
-		case ",", ";", ":":
+		case sm.mark == "," || sm.mark == ";" || sm.mark == ":":
 			follow = followLower
+		case sm.opens && follow == followLower:
+			// Quoted words after a comma keep their capital: `said, "The end"`.
+			follow = followNone
 		default:
-			// A quote or parenthesis keeps whatever the mark before it
+			// A quote or parenthesis keeps a capital the mark before it
 			// asked for: `said "hi." Then` and `. "Hello` capitalise.
 		}
 		if last < len(text) && !sm.opens {
+			// A space, unless a closer follows: a quote right after the
+			// word closes, one after a space opens (`done. "Hello`).
 			r, _ := utf8.DecodeRuneInString(text[last:])
-			if !strings.ContainsRune(")]}\"", r) {
+			if !strings.ContainsRune(")]}", r) && (r != '"' || spaced) {
 				out.WriteByte(' ')
 			}
 		}
@@ -100,10 +105,20 @@ type spokenMark struct {
 	opens bool
 }
 
-// absorbs reports whether the mark replaces the punctuation Whisper wrote
-// before it: a sentence mark does ("Thanks. Period" is one period), a quote
-// or parenthesis does not ("hi. Close quote" keeps Whisper's period).
-func (sm spokenMark) absorbs() bool { return !sm.opens && sm.mark != `"` && sm.mark != ")" }
+// absorbs is the punctuation Whisper wrote before the mark word that the
+// mark replaces. A sentence mark replaces all of it ("Thanks. Period" is
+// one period). A closing quote or parenthesis replaces Whisper's separators
+// ("maybe, close paren" is "maybe)") and keeps its sentence end ("hi. Close
+// quote" is `hi."`). An opening mark replaces none ("well, open paren").
+func (sm spokenMark) absorbs() string {
+	switch {
+	case sm.opens:
+		return ""
+	case sm.mark == `"` || sm.mark == ")":
+		return ",;:"
+	}
+	return whisperPunctuation
+}
 
 // inHyphenated reports whether the word at text[start:end] is part of a
 // hyphenated word Whisper wrote ("comma-separated", "period-appropriate"):
@@ -185,11 +200,11 @@ const (
 	followLower
 )
 
-// applyFollow applies f to the first word of s, when that word starts with
-// a letter ("3pm" stays as it is). A segment of only spaces passes f on to
-// the next one.
+// applyFollow applies f to the first word of s, past any opening quote or
+// bracket Whisper wrote, when that word starts with a letter ("3pm" stays as
+// it is). A segment of only spaces and openers passes f on to the next one.
 func applyFollow(s string, f *follow) string {
-	i := strings.IndexFunc(s, func(r rune) bool { return !unicode.IsSpace(r) })
+	i := strings.IndexFunc(s, func(r rune) bool { return !unicode.IsSpace(r) && !strings.ContainsRune(`"'“‘([{`, r) })
 	if i < 0 {
 		return s
 	}

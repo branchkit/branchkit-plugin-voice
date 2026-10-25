@@ -38,6 +38,10 @@ func TestSpokenPunctuation(t *testing.T) {
 		{"a hyphenated word Whisper wrote is left", "the values are comma-separated", "the values are comma-separated"},
 		{"hyphen after the word", "period-appropriate costumes", "period-appropriate costumes"},
 		{"a number after a sentence mark keeps its case", "we're done period 3pm works", "we're done. 3pm works"},
+		{"a closing paren absorbs Whisper's commas", "a test, open paren, maybe, close paren, works", "a test, (maybe) works"},
+		{"a closing quote absorbs Whisper's commas", "he said, open quote, hello, close quote, and left", `he said, "hello" and left`},
+		{"a capital inside a quote after a comma stays", "he said comma open quote The end close quote", `he said, "The end"`},
+		{"capital after a sentence mark crosses Whisper's quote", `we're done period "hello" she said`, `we're done. "Hello" she said`},
 		{"Unicode around marks", "café comma naïve period", "café, naïve."},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
