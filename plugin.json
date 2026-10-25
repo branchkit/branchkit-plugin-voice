@@ -546,19 +546,31 @@
       },
       "sherpa_commands": {
         "stage_type": "command_recognition",
+        "resources": {
+          "memory_mb": 2048
+        },
         "binary": "sherpa_commands"
       },
       "whisperkit_stt": {
         "stage_type": "stt",
+        "resources": {
+          "memory_mb": 4096
+        },
         "binary": "whisperkit_stage",
         "platform": "macos"
       },
       "refine_llm": {
         "stage_type": "request",
+        "resources": {
+          "memory_mb": 6144
+        },
         "binary": "refine_llm"
       },
       "whisper_stt": {
         "stage_type": "stt",
+        "resources": {
+          "memory_mb": 2048
+        },
         "binary": "whisper_stage",
         "platform": [
           "linux",
