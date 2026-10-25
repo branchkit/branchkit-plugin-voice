@@ -33,7 +33,7 @@ func TestResetKeepsUserRules(t *testing.T) {
 	learned := Correction{ID: "l1", MatchPattern: `(?i)\bfoo bar\b`,
 		Replacement: "FooBar", Enabled: true, Source: SourceLearned}
 
-	c := New(branchkit.NewDetachedPlugin(), func() bool { return true })
+	c := New(branchkit.NewDetachedPlugin(), func() bool { return true }, func() bool { return false })
 	c.list = []Correction{mine, learned}
 
 	current := c.Get()

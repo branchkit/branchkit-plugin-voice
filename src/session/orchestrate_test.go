@@ -28,7 +28,7 @@ func orchReq() *OrchestrateRequest {
 func newTestState() *State {
 	p := branchkit.NewDetachedPlugin()
 	h := hud.New(p, func(*hud.RenderHUDRequest) (hud.HudResponse, error) { return hud.HudResponse{}, nil })
-	s := New(h, speech.New(p, func() bool { return true }), func() {})
+	s := New(h, speech.New(p, func() bool { return true }, func() bool { return false }), func() {})
 	s.callResolvePhraseFn = func(words []string) *phraseResponse { return fakePhrase(words, s.callResolveFn) }
 	return s
 }

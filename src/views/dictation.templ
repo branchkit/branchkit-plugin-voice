@@ -30,6 +30,13 @@ templ Dictation(data DictationViewData) {
 						data-on:change={ "@post('" + branchkit.MethodURL("config/update") + "', {payload: {dictation_sounds: evt.detail.checked}})" }
 					></bk-toggle>
 				}
+				@settingRow("Say punctuation", "Say “comma”, “period”, “question mark”, “colon”, “open quote” and “close quote” to type the mark. After “the” or “a”, the word is typed as a word.") {
+					<bk-toggle
+						title="Say punctuation"
+						checked?={ data.SpokenPunctuation }
+						data-on:change={ "@post('" + branchkit.MethodURL("config/update") + "', {payload: {spoken_punctuation: evt.detail.checked}})" }
+					></bk-toggle>
+				}
 				@settingRow("Microphone", "Used for dictation and voice commands. Chosen on Get started.") {
 					<span class="dict-row-value">{ data.MicLabel }</span>
 					<a class="dict-row-value" href="/plugins/voice/settings/start" target="_top">Change</a>

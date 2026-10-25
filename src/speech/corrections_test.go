@@ -79,7 +79,7 @@ func TestStripSpeakPhrases(t *testing.T) {
 }
 
 func TestRepair(t *testing.T) {
-	c := New(branchkit.NewDetachedPlugin(), func() bool { return true })
+	c := New(branchkit.NewDetachedPlugin(), func() bool { return true }, func() bool { return false })
 	c.list = []Correction{
 		{ID: "test1", MatchPattern: "helo", Replacement: "hello", IsRegex: false, Enabled: true},
 	}
@@ -98,6 +98,26 @@ func TestRepair(t *testing.T) {
 				t.Errorf("Repair(%q, %v) = %q, want %q", tt.in, tt.speak, got, tt.want)
 			}
 		})
+	}
+}
+
+// Spoken punctuation runs only when its setting is on, and after the user's
+// corrections, so a rule can claim a phrase holding a mark word first.
+func TestRepairSpokenPunctuation(t *testing.T) {
+	on := false
+	c := New(branchkit.NewDetachedPlugin(), func() bool { return true }, func() bool { return on })
+	c.list = []Correction{
+		{ID: "test1", MatchPattern: "comma separated", Replacement: "comma-separated", Enabled: true},
+	}
+	if got := c.Repair("hi comma there", false); got != "hi comma there" {
+		t.Errorf("setting off: Repair = %q, want the text unchanged", got)
+	}
+	on = true
+	if got := c.Repair("hi comma there", false); got != "hi, there" {
+		t.Errorf("setting on: Repair = %q, want %q", got, "hi, there")
+	}
+	if got := c.Repair("a comma separated list", false); got != "a comma-separated list" {
+		t.Errorf("a correction runs first: Repair = %q, want %q", got, "a comma-separated list")
 	}
 }
 
@@ -229,7 +249,7 @@ func TestSeedMissingDefaultsInsertsBeforeUserRules(t *testing.T) {
 // and Set replaces the whole list, so saving would erase every rule the user
 // had. Set refuses instead and reads again.
 func TestSetRefusesAfterAFailedRead(t *testing.T) {
-	c := New(branchkit.NewDetachedPlugin(), func() bool { return true }) // every read fails
+	c := New(branchkit.NewDetachedPlugin(), func() bool { return true }, func() bool { return false }) // every read fails
 	c.LoadFromCollection()
 	if err := c.Set([]Correction{{MatchPattern: "foo", Replacement: "bar"}}); err == nil {
 		t.Fatal("Set must refuse an edit made on top of defaults after a failed read")

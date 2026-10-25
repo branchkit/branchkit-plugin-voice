@@ -15,13 +15,16 @@ import (
 
 // Corrections is the dictation-correction set: the rules, their persistence
 // in the corrections collection, and the decoder-bias push that follows
-// every change. Build it with New; the platform handle and the all-caps
-// switch arrive as arguments, so a Corrections cannot exist unwired.
+// every change. Build it with New; the platform handle and the repair
+// switches arrive as arguments, so a Corrections cannot exist unwired.
 type Corrections struct {
 	plugin *branchkit.Plugin
 	// allCapsFix answers the user's "fix all caps" setting; a config read
 	// passed in so this package need not know where settings live.
 	allCapsFix func() bool
+	// spokenPunctuation answers the user's "Say punctuation" setting, the
+	// same way.
+	spokenPunctuation func() bool
 
 	mu   sync.Mutex
 	list []Correction
@@ -39,8 +42,9 @@ type Corrections struct {
 
 // New starts from the shipped defaults; LoadFromCollection replaces them
 // with what the platform has once RPC is available.
-func New(p *branchkit.Plugin, allCapsFix func() bool) *Corrections {
-	return &Corrections{plugin: p, allCapsFix: allCapsFix, list: DefaultCorrections()}
+func New(p *branchkit.Plugin, allCapsFix, spokenPunctuation func() bool) *Corrections {
+	return &Corrections{plugin: p, allCapsFix: allCapsFix, spokenPunctuation: spokenPunctuation,
+		list: DefaultCorrections()}
 }
 
 // AllCapsFix reports whether the all-caps repair is enabled.
@@ -557,7 +561,9 @@ func (c *Corrections) HandleDictationCorrect(req *struct {
 // by deterministic, visible rules. In order: the speak-mode
 // stop-phrase backstop, the user's corrections (the hallucination filter is
 // one of them), then the all-caps fix, after corrections so a blanked
-// transcript is not re-cased. How the text should READ for its destination is
+// transcript is not re-cased, then spoken punctuation, after both so a
+// user's rule can still claim a phrase with a mark word in it and an
+// all-caps "COMMA" is converted. How the text should READ for its destination is
 // the shape step's (the dictation profile), not this one's.
 func (c *Corrections) Repair(text string, isSpeak bool) string {
 	if isSpeak {
@@ -566,6 +572,9 @@ func (c *Corrections) Repair(text string, isSpeak bool) string {
 	text = ApplyCorrections(text, c.Get())
 	if c.AllCapsFix() {
 		text = FixAllCaps(text)
+	}
+	if c.spokenPunctuation() {
+		text = SpokenPunctuation(text)
 	}
 	return text
 }
@@ -597,8 +606,7 @@ var speakTrailingRe = func() *regexp.Regexp {
 // a text-domain BACKSTOP for the paths the audio cut can't cover — the stop
 // mis-heard by sherpa's closed grammar, the phrase split across two VAD
 // segments (the adjacent-pair detector needs both words in one transcript), an
-// escape close with no known onset (Option+T / toggle → nil cutoff), and the
-// Linux whisper-stt stage, which does not honor cutoff_ms. The two-word
+// escape close with no known onset (Option+T / toggle → nil cutoff). The two-word
 // adjacent-pair requirement keeps false strips of genuine "...over" endings
 // rare. Repeat until stable so a doubled tail ("speak over speak over") clears.
 func StripSpeakPhrases(text string) string {

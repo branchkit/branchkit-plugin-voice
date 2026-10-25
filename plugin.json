@@ -332,6 +332,13 @@
             "default": true
           },
           {
+            "key": "spoken_punctuation",
+            "label": "Say punctuation",
+            "description": "Say \"comma\", \"period\", \"question mark\", \"exclamation point\", \"colon\", \"semicolon\", \"open quote\" and \"close quote\", or \"open paren\" and \"close paren\" to type the mark. After \"the\", \"a\" or \"your\" the word is typed as a word.",
+            "field_type": "boolean",
+            "default": false
+          },
+          {
             "key": "refine_dictation",
             "label": "Clean up with a local model",
             "description": "After a dictation, a language model on this computer removes false starts and self-corrections (\"Tuesday, no, Wednesday\" becomes \"Wednesday\"). Off by default: it adds a second or two, needs a 1.1 GB download, and its edits are only kept when they remove words, never when they add them. Say \"type original\" to get the unedited text back.",

@@ -28,6 +28,10 @@ type VoiceConfig struct {
 	// moved into `speech.FixAllCaps` with the rest of the stage's text policy
 	// and this flag finally gates it.
 	FixAllCaps bool `json:"fix_all_caps"`
+	// SpokenPunctuation turns punctuation said as a word ("comma", "question
+	// mark") into the mark (speech.SpokenPunctuation). Off by default: it
+	// changes text that has not changed before, so the user opts in.
+	SpokenPunctuation bool `json:"spoken_punctuation"`
 	// RefineDictation turns on the local-model clean-up step (refine.go):
 	// off by default, because it adds latency and a large download.
 	RefineDictation bool `json:"refine_dictation"`

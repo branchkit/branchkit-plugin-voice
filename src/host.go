@@ -216,7 +216,8 @@ func newHost(p *branchkit.Plugin) *Host {
 		recordingsViewMode:  "grouped",
 	}
 	h.setup = &setupReporter{send: h.sendSetupReport}
-	h.speech = speech.New(p, func() bool { return h.config.Get().FixAllCaps })
+	h.speech = speech.New(p, func() bool { return h.config.Get().FixAllCaps },
+		func() bool { return h.config.Get().SpokenPunctuation })
 	h.writeMode = h.writeModeState
 	h.modeRetryDelays = defaultModeRetryDelays
 	h.modeRetryAfter = func(d time.Duration, f func()) { time.AfterFunc(d, f) }

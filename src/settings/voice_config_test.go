@@ -44,7 +44,7 @@ func TestDefaultsStayInSyncWithManifestShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, key := range []string{
-		"model", "command_model", "language", "command_language", "fix_all_caps", "refine_dictation",
+		"model", "command_model", "language", "command_language", "fix_all_caps", "spoken_punctuation", "refine_dictation",
 		"dictation_enabled", "voice_commands_enabled",
 		"calibration_capture", "capture_retention", "calibration_auto_advance",
 		"dictation_sounds", "input_device", "input_device_name",
@@ -54,7 +54,7 @@ func TestDefaultsStayInSyncWithManifestShape(t *testing.T) {
 			t.Errorf("VoiceConfig lost manifest field %q", key)
 		}
 	}
-	if len(m) != 16 {
-		t.Errorf("VoiceConfig has %d fields; plugin.json declares 16 — update BOTH", len(m))
+	if len(m) != 17 {
+		t.Errorf("VoiceConfig has %d fields; plugin.json declares 17 — update BOTH", len(m))
 	}
 }

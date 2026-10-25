@@ -512,6 +512,9 @@ type DictationViewData struct {
 	// a word fixed here appears under "Words it should know" above.
 	RecentHTML string
 
+	// SpokenPunctuation is the "Say punctuation" setting.
+	SpokenPunctuation bool
+
 	// Advanced: the machinery, folded away.
 	FixAllCaps bool
 	// StylesReady is whether the style model is downloaded, StyleRef the ref
