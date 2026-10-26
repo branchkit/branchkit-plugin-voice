@@ -106,7 +106,9 @@ type State struct {
 	lastProblem    string
 	cmdRecState    PipelineState
 	dictationState PipelineState
-	drainTimer     *time.Timer
+	// recordingGen numbers dictation recordings (StartDictationRecording).
+	recordingGen uint64
+	drainTimer   *time.Timer
 
 	// Command-hold deferred teardown: after Option+G up, the session boundary +
 	// return-to-idle are deferred until the engine's end-of-hold flush has
@@ -756,16 +758,30 @@ func (s *State) DropsCommandTranscripts() bool {
 	return s.cmdRecState == PipelineSuppressed && !s.cmdHoldActive && !s.cmdHoldDraining
 }
 
-func (s *State) StartDictationRecording() {
+// StartDictationRecording marks a dictation recording and returns its
+// generation, which IsRecording takes to tell this recording from a later
+// one.
+func (s *State) StartDictationRecording() uint64 {
 	s.mu.Lock()
 	prev := s.dictationState
 	s.dictationState = PipelineRecording
+	s.recordingGen++
+	gen := s.recordingGen
 	if s.drainTimer != nil {
 		s.drainTimer.Stop()
 		s.drainTimer = nil
 	}
 	s.mu.Unlock()
 	s.emitPipelineEvent("pstate: dictation " + prev.String() + " → recording")
+	return gen
+}
+
+// IsRecording reports whether the recording StartDictationRecording
+// numbered gen is still recording.
+func (s *State) IsRecording(gen uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dictationState == PipelineRecording && s.recordingGen == gen
 }
 
 // drainBackstop bounds how long a draining dictation waits for its transcript.
@@ -778,7 +794,7 @@ func (s *State) StartDictationRecording() {
 //
 // 65s against the dictation pipeline's 60s: decoding takes about 1 s plus
 // 64 ms per second of audio (811 recorded dictations, 2026-10-04) with spikes
-// of several seconds, so a ten-minute dictation — the stage's cap — needs
+// of several seconds, so a ten-minute dictation — the voice plugin's limit — needs
 // about 40 s. The earlier 15s/20s pair dropped every dictation past roughly
 // two minutes.
 const drainBackstop = 65 * time.Second

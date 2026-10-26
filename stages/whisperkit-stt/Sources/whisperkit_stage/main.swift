@@ -138,11 +138,10 @@ class WhisperKitStage {
     // (absolute end-sample since session start, the chunk's shared-clock
     // timestamp_ms). An audio_stop carrying cutoff_ms truncates the buffer at
     // that position before transcribing, so the stop phrase never reaches the
-    // model. trimmedSamples tracks front-trimming so absolute positions keep
-    // indexing into the live buffer.
+    // model.
     private var chunkMarks: [(endSample: Int, timestampMs: UInt64)] = []
-    private var totalSamples: Int = 0
-    private var trimmedSamples: Int = 0
+    // Whether this session reached maxSamples (said once, when it does).
+    private var capped: Bool = false
     private let modelName: String
     private let language: String
 
@@ -182,8 +181,12 @@ class WhisperKitStage {
 
     private let initialCredit: Int = 8
     private let creditGrant: Int = 4
-    // Safety bound: 10 minutes. WhisperKit VAD chunking handles segmentation.
-    private let maxSamples: Int = 16000 * 60 * 10
+    // Safety bound: 11 minutes. The voice plugin stops a dictation at 10
+    // (its dictationLimit); the extra minute covers the audio between its
+    // timer and the first chunk. Past it the END is dropped, never the
+    // start: keeping the last minutes typed a long dictation without its
+    // opening. WhisperKit VAD chunking handles segmentation.
+    private let maxSamples: Int = 16000 * 60 * 11
 
     init(modelName: String, language: String) {
         self.modelName = modelName
@@ -354,8 +357,7 @@ class WhisperKitStage {
                     currentSessionId = sid
                     pcmSamples.removeAll()
                     chunkMarks.removeAll()
-                    totalSamples = 0
-                    trimmedSamples = 0
+                    capped = false
                     framesSinceCredit = 0
                     slog("session start", session: sid)
 
@@ -366,18 +368,19 @@ class WhisperKitStage {
                 }
 
             case "audio_chunk":
-                payload.withUnsafeBytes { rawBuffer in
-                    let buffer = rawBuffer.bindMemory(to: Int16.self)
-                    pcmSamples.append(contentsOf: buffer)
-                }
-                totalSamples += payload.count / 2
-                if let ts = (data["timestamp_ms"] as? NSNumber)?.uint64Value {
-                    chunkMarks.append((endSample: totalSamples, timestampMs: ts))
-                }
-                if pcmSamples.count > maxSamples {
-                    trimmedSamples += pcmSamples.count - maxSamples
-                    pcmSamples.removeFirst(pcmSamples.count - maxSamples)
-                    chunkMarks.removeAll { $0.endSample <= trimmedSamples }
+                let room = maxSamples - pcmSamples.count
+                if room > 0 {
+                    payload.withUnsafeBytes { rawBuffer in
+                        let buffer = rawBuffer.bindMemory(to: Int16.self)
+                        pcmSamples.append(contentsOf: buffer.prefix(room))
+                    }
+                    if let ts = (data["timestamp_ms"] as? NSNumber)?.uint64Value {
+                        chunkMarks.append((endSample: pcmSamples.count, timestampMs: ts))
+                    }
+                } else if !capped {
+                    capped = true
+                    slog("buffer full at \(maxSamples / 16000) s: later audio is not transcribed",
+                         level: "warn", session: currentSessionId)
                 }
                 framesSinceCredit += 1
                 if framesSinceCredit >= creditGrant {
@@ -420,10 +423,9 @@ class WhisperKitStage {
     private func truncateBuffer(atCutoffMs cutoff: UInt64) {
         guard let mark = chunkMarks.first(where: { $0.timestampMs >= cutoff }) else { return }
         let backSamples = Int(mark.timestampMs - cutoff) * 16
-        let keepAbsolute = max(0, mark.endSample - backSamples)
-        let keepInBuffer = max(0, keepAbsolute - trimmedSamples)
-        if keepInBuffer < pcmSamples.count {
-            let dropped = pcmSamples.count - keepInBuffer
+        let keep = max(0, mark.endSample - backSamples)
+        if keep < pcmSamples.count {
+            let dropped = pcmSamples.count - keep
             slog("cutoff \(cutoff)ms: dropping \(dropped) buffered samples (\(dropped / 16)ms)",
                  session: currentSessionId)
             pcmSamples.removeLast(dropped)

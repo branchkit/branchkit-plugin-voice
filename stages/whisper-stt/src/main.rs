@@ -28,6 +28,11 @@ const BIAS_EVENT: &str = "ext.branchkit.dictation_bias";
 /// stage's value, where it was measured: large enough to fix a misspelt name,
 /// small enough that the only changes it produced were corrections.
 const BIAS_BOOST: f32 = 2.0;
+/// The most audio one session buffers: 11 minutes at 16 kHz. The voice
+/// plugin stops a dictation at 10 (its dictationLimit); the extra minute
+/// covers the audio between its timer and the first chunk. Past it the END
+/// is dropped, never the start, as in the macOS stage.
+const MAX_SAMPLES: usize = 16_000 * 60 * 11;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -64,6 +69,7 @@ async fn run() -> Result {
         session_id: None,
         pcm_i16: Vec::new(),
         marks: Vec::new(),
+        capped: false,
         bias: Bias::default(),
     };
 
@@ -78,6 +84,8 @@ struct Whisper {
     /// Per chunk: (samples buffered once it was appended, its shared-clock
     /// timestamp), for cutting the buffer at an AudioStop's `cutoff_ms`.
     marks: Vec<(usize, u64)>,
+    /// Whether this session reached MAX_SAMPLES (said once, when it does).
+    capped: bool,
     bias: Bias,
 }
 
@@ -154,6 +162,7 @@ impl AudioConsumer for Whisper {
         self.session_id = Some(ev.session_id);
         self.pcm_i16.clear();
         self.marks.clear();
+        self.capped = false;
         Ok(())
     }
 
@@ -171,8 +180,20 @@ impl AudioConsumer for Whisper {
             return Ok(Chunk::Dropped);
         }
 
-        // Accumulate PCM samples from payload (i16 little-endian)
-        for pair in payload.chunks_exact(2) {
+        // Accumulate PCM samples from payload (i16 little-endian), up to
+        // MAX_SAMPLES.
+        let room = MAX_SAMPLES - self.pcm_i16.len();
+        if room == 0 {
+            if !self.capped {
+                self.capped = true;
+                stage_log::warn(&format!(
+                    "buffer full at {} s: later audio is not transcribed",
+                    MAX_SAMPLES / 16_000
+                ));
+            }
+            return Ok(Chunk::Counted);
+        }
+        for pair in payload.chunks_exact(2).take(room) {
             self.pcm_i16.push(i16::from_le_bytes([pair[0], pair[1]]));
         }
         self.marks.push((self.pcm_i16.len(), ev.timestamp_ms));

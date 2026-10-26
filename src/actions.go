@@ -173,7 +173,7 @@ func (h *Host) handleVoiceDictation(req *branchkit.OnActionRequest) (any, error)
 	case session.StartBegin:
 		branchkit.Logf("voice", "dictation: starting pipeline")
 		h.dictationStartSound()
-		h.sess.StartDictationRecording()
+		h.limitDictation(h.sess.StartDictationRecording())
 		h.warmRefine()
 		if h.sess.IsContinuousActive() {
 			h.stopCmdRecForDictation()
@@ -242,6 +242,43 @@ func (h *Host) finishDictationSession() {
 	h.pipelinesStop(branchkit.PipelinesStopRequest{Name: h.dictationPipeline()})
 	h.restartCmdRecIfContinuous()
 	h.leaveDictationOverlay()
+}
+
+// dictationLimit is the longest a dictation records. The dictation stages
+// hold at most a little more audio than this (whisperkit-stt's maxSamples,
+// whisper-stt's MAX_SAMPLES), and the drain backstop allows for decoding
+// this much.
+const dictationLimit = 10 * time.Minute
+
+// limitDictation ends the recording numbered gen at the dictation limit, if
+// it is still recording then.
+func (h *Host) limitDictation(gen uint64) {
+	h.dictationLimitAfter(dictationLimit, func() { h.endDictationAtLimit(gen) })
+}
+
+// endDictationAtLimit stops a latched, held or speak dictation that reached
+// the limit, types what it holds, and says why it stopped. Before the limit,
+// the stage kept recording and dropped the START of the dictation, so a
+// twelve-minute dictation typed only its last ten minutes, with no sign.
+func (h *Host) endDictationAtLimit(gen uint64) {
+	if !h.sess.IsRecording(gen) {
+		return
+	}
+	branchkit.Logf("voice", "dictation: stopped at the %v limit", dictationLimit)
+	if h.sess.GetSpeakDictating() {
+		h.stopSpeakDictation(nil)
+	} else {
+		// The key's release, or the next press, must not read as ending a
+		// recording already ended.
+		h.sess.CancelDictationPress()
+		h.finishDictationSession()
+	}
+	if err := h.systemNotify(branchkit.SystemNotifyRequest{
+		Title: "Dictation stopped at 10 minutes",
+		Body:  "What you said is being typed. Start dictation again to keep going.",
+	}); err != nil {
+		branchkit.Logf("voice", "dictation: limit notice failed: %v", err)
+	}
 }
 
 func (h *Host) stopCmdRecForDictation() {
@@ -1397,7 +1434,7 @@ func (h *Host) handleVoiceSpeak(req *branchkit.OnActionRequest) (any, error) {
 // Shared by `speak start` (handleVoiceSpeak) and `find text` (handleVoiceFindDictate).
 func (h *Host) startSpeakSession() {
 	h.speakCarry.reset() // nothing pairs with the previous session's words
-	h.sess.StartDictationRecording()
+	h.limitDictation(h.sess.StartDictationRecording())
 	h.warmRefine()
 	h.enterDictationOverlay()
 	h.sess.SetSpeakDictating(true)

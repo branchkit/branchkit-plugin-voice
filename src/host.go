@@ -80,6 +80,9 @@ type Host struct {
 	// of command recognition (time.AfterFunc). Seams a test replaces.
 	systemNotify       func(req branchkit.SystemNotifyRequest) error
 	cmdRecRestartAfter func(d time.Duration, f func())
+	// dictationLimitAfter schedules the end of a recording at the
+	// dictation limit (time.AfterFunc); a seam a test replaces.
+	dictationLimitAfter func(d time.Duration, f func())
 	// calibHoldEnd tells calibration a hold ended (a seam a test watches).
 	calibHoldEnd func()
 	// The restart budget for command recognition while listening
@@ -250,6 +253,7 @@ func newHost(p *branchkit.Plugin) *Host {
 	h.pipelinesStatus = p.PipelinesStatus
 	h.systemNotify = p.SystemNotify
 	h.cmdRecRestartAfter = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
+	h.dictationLimitAfter = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
 	h.calibHoldEnd = func() { h.calib.HandleHoldEnd() }
 	h.holdPause = h.holdPauseDefault
 	h.releasePause = h.releasePauseDefault
