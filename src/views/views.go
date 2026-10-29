@@ -494,8 +494,8 @@ type DictationViewData struct {
 	// DictateKeys is the dictation chord as keycaps (⌥ T), so the page names
 	// the key the user actually has bound.
 	DictateKeys []string
-	// Sounds is whether dictation plays its start and stop sounds.
-	Sounds bool
+	// Sounds is the start and stop sounds setting: "auto", "on" or "off".
+	Sounds string
 	// MicLabel names the microphone in use, for the one-line pointer to Get
 	// started, where it is chosen.
 	MicLabel string
@@ -1271,4 +1271,12 @@ type DictationRow struct {
 type DictationCell struct {
 	Heard  string
 	Errors int
+}
+
+// soundsChoices are the start and stop sounds setting's values, as the
+// Dictation tab offers them.
+var soundsChoices = []struct{ Value, Label string }{
+	{"auto", "Automatic"},
+	{"on", "On"},
+	{"off", "Off"},
 }

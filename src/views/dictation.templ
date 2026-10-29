@@ -23,12 +23,15 @@ templ Dictation(data DictationViewData) {
 					<span class="dict-row-hint">double-tap</span>
 					@keys(data.DictateKeys)
 				}
-				@settingRow("Start and stop sounds", "A short sound when dictation starts listening and when it stops, so you know without looking.") {
-					<bk-toggle
-						title="Start and stop sounds"
-						checked?={ data.Sounds }
-						data-on:change={ "@post('" + branchkit.MethodURL("config/update") + "', {payload: {dictation_sounds: evt.detail.checked}})" }
-					></bk-toggle>
+				@settingRow("Start and stop sounds", "A short sound when dictation starts listening and when it stops, so you know without looking. Automatic plays them only where BranchKit has no icon of its own to show it is listening.") {
+					<select
+						aria-label="Start and stop sounds"
+						data-on:change={ "@post('" + branchkit.MethodURL("config/update") + "', {payload: {dictation_sounds: evt.target.value}})" }
+					>
+						for _, c := range soundsChoices {
+							<option value={ c.Value } selected?={ data.Sounds == c.Value }>{ c.Label }</option>
+						}
+					</select>
 				}
 				@settingRow("Say punctuation", "Say “comma”, “period”, “question mark”, “colon”, “open quote” and “close quote” to type the mark. After “the” or “a”, the word is typed as a word.") {
 					<bk-toggle

@@ -362,9 +362,14 @@
           {
             "key": "dictation_sounds",
             "label": "Start and stop sounds",
-            "description": "A short sound when dictation starts listening and when it stops, so you know without looking.",
-            "field_type": "boolean",
-            "default": false
+            "description": "A short sound when dictation starts listening and when it stops, so you know without looking. Automatic plays them only where BranchKit has no icon of its own to show it is listening.",
+            "field_type": "enum",
+            "enum_values": [
+              "auto",
+              "on",
+              "off"
+            ],
+            "default": "auto"
           },
           {
             "key": "dictation_enabled",

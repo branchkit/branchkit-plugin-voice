@@ -1206,7 +1206,7 @@ func (h *Host) renderDictation(search string, preferredLanguage string, correcti
 	cfg := h.config.Get()
 	return views.Render(views.Dictation(views.DictationViewData{
 		DictateKeys:       keyCaps(dictate, runtime.GOOS),
-		Sounds:            h.config.Get().DictationSounds,
+		Sounds:            soundsChoice(h.config.Get().DictationSounds),
 		MicLabel:          micLabel(h.micMenuView(cfg.InputDevice, cfg.InputDeviceName)),
 		Words:             words,
 		RecentHTML:        h.renderDictationHistoryHTML(),

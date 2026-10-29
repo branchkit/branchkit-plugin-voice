@@ -36,10 +36,12 @@ type VoiceConfig struct {
 	// off by default, because it adds latency and a large download.
 	RefineDictation bool `json:"refine_dictation"`
 
-	// DictationSounds plays a short sound as dictation starts and stops, for
-	// anyone not watching the pill. Off by default: sound is a
-	// secondary cue, never the primary one (meetings, muted Macs).
-	DictationSounds bool `json:"dictation_sounds"`
+	// DictationSounds is whether dictation plays a short sound as it starts
+	// and stops. "auto", the default, plays them only where there is no
+	// visible recording indicator (stock GNOME on Wayland has no pill and
+	// no tray icon): there the sound is the only sign the microphone is
+	// live. Elsewhere sound stays a secondary cue (meetings, muted Macs).
+	DictationSounds SoundsMode `json:"dictation_sounds"`
 	// InputDevice is the microphone BranchKit listens through, as the
 	// platform's device id (`native.audio_devices` uid); empty follows the
 	// system default. InputDeviceName is its name, for showing it while it
@@ -183,6 +185,40 @@ func (c *Config) HandleUpdateConfig(req *map[string]json.RawMessage) error {
 		if err := c.relayUserPatch(fields); err != nil {
 			branchkit.Logf("voice", "config relay failed: %v", err)
 		}
+	}
+	return nil
+}
+
+// SoundsMode is the dictation sounds setting: SoundsAuto, SoundsOn or
+// SoundsOff.
+type SoundsMode string
+
+const (
+	SoundsAuto SoundsMode = "auto"
+	SoundsOn   SoundsMode = "on"
+	SoundsOff  SoundsMode = "off"
+)
+
+// UnmarshalJSON also reads the switch the setting used to be: a stored true
+// is on, false off.
+func (m *SoundsMode) UnmarshalJSON(b []byte) error {
+	var on bool
+	if json.Unmarshal(b, &on) == nil {
+		*m = SoundsOff
+		if on {
+			*m = SoundsOn
+		}
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	switch SoundsMode(s) {
+	case SoundsOn, SoundsOff:
+		*m = SoundsMode(s)
+	default:
+		*m = SoundsAuto
 	}
 	return nil
 }
