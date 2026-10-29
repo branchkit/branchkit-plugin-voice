@@ -208,9 +208,15 @@ def load_clips(clip_dir):
     clips = []
     for name in names:
         path = clip_dir / name
-        rate, samples = read_wav(path)
-        if rate != RATE:
-            raise ValueError(f"{path}: want 16 kHz (the stage's input), got {rate} Hz")
+        # The stage reads the file itself, so it must already be what the
+        # stage takes: 16 kHz mono (read_wav would mix stereo down here only).
+        with wave.open(str(path), "rb") as w:
+            rate, channels = w.getframerate(), w.getnchannels()
+        if (rate, channels) != (RATE, 1):
+            raise ValueError(f"{path}: want 16 kHz mono (the stage's input), got {rate} Hz, {channels} channel(s)")
+        _, samples = read_wav(path)
+        if len(samples) < RATE // 2:
+            raise ValueError(f"{path}: {len(samples)} samples is under half a second, too short to time")
         clips.append({"name": name, "path": str(path.resolve()), "audio_s": round(len(samples) / RATE, 2)})
     if not clips:
         raise ValueError(f"{clip_dir}: no WAV clips")
@@ -509,6 +515,9 @@ def main(argv=None):
 
 def bench(args, clip_dir):
     durations = sorted({int(d) for d in args.durations.split(",") if d.strip()})
+    if not durations or durations[0] < 1:
+        print("--durations takes whole seconds, each at least 1", file=sys.stderr)
+        return 2
 
     if args.clips:
         clip_meta, clips = load_clips(args.clips)
@@ -523,6 +532,9 @@ def bench(args, clip_dir):
     if args.clips_only:
         return 0
 
+    # Absolute, so the path checked here is the one run: a bare name would
+    # be looked up on PATH instead.
+    args.stage = args.stage.resolve()
     if not args.stage.is_file():
         print(f"no whisper_stage at {args.stage}: build it (cargo build --release -p whisper-stt in stages/) or pass --stage", file=sys.stderr)
         return 1
