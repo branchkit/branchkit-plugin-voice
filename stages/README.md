@@ -55,3 +55,21 @@ suite (`branchkit-stage-sdk-test`) checks a built stage against the protocol.
 Models are not in the tree. A stage receives voice's model root in
 `BRANCHKIT_ARTIFACTS_DIR` from the platform; outside it, `whisper_stage` reads
 `WHISPER_MODEL_PATH`. `branchkit-cli artifact download` provisions the models.
+
+## Dictation latency
+
+Off macOS, dictation waits on `whisper_stage` after the key is released.
+`../scripts/whisper-latency.py` measures that wait: it speaks 5, 15 and 30 s
+clips with the system's text-to-speech (or takes `--clips DIR`), fetches each
+whisper.cpp model `plugin.json` declares, and times `whisper_stage probe` on
+them, one warm-up and three timed decodes each, printing decode time and
+real-time factor beside the CPU and thread count.
+
+```bash
+cargo build --release -p whisper-stt
+python3 ../scripts/whisper-latency.py --json latency.json
+```
+
+The `Whisper latency` workflow (`../.github/workflows/whisper-latency.yml`)
+runs the same script on x86 Linux and Windows runners. It starts only by
+hand: `gh workflow run whisper-latency.yml`.

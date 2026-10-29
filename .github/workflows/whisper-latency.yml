@@ -1,0 +1,104 @@
+# Whisper dictation latency on free x86 runners. Started by hand only:
+#
+#   gh workflow run whisper-latency.yml -R branchkit/branchkit-plugin-voice
+#
+# Off macOS, dictation transcribes the whole recording when the key is
+# released, through whisper_stage (whisper.cpp, on the CPU). This builds that
+# stage on an x86 Linux and an x86 Windows runner and times every whisper.cpp
+# model plugin.json declares on the same 5, 15 and 30 s speech clips, made
+# once with espeak-ng: one warm-up, then three timed decodes of each
+# (scripts/whisper-latency.py). Each job's summary carries the table; the
+# JSON is an artifact. A runner is a 4-vCPU slice of a server CPU, not a
+# laptop: read the numbers as what four x86 cores do, CPU model beside them.
+#
+# Never on push or on a schedule: a run answers a question, nothing gates on it.
+
+name: Whisper latency
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Timed decodes per clip
+        default: '3'
+      threads:
+        description: Thread counts, comma-separated (empty = the live stage's default, the CPUs up to 4)
+        default: ''
+      windows_llvm:
+        description: An LLVM release whose libclang generates whisper.cpp's bindings on Windows, e.g. 18.1.8 (empty = the runner's own)
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  clips:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install espeak-ng
+        run: sudo apt-get update -q && sudo apt-get install -y -q espeak-ng
+      - name: Make the clips
+        run: python scripts/whisper-latency.py --clips-only --save-clips clips
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clips
+          path: clips/
+
+  bench:
+    needs: clips
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'   # Windows' console code page would otherwise mangle the output
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build tools (Linux)
+        if: runner.os == 'Linux'
+        # libclang for whisper-rs-sys' bindgen, cmake for whisper.cpp.
+        run: sudo apt-get update -q && sudo apt-get install -y -q cmake libclang-dev
+      - name: Pin libclang (Windows)
+        if: runner.os == 'Windows' && inputs.windows_llvm != ''
+        shell: pwsh
+        env:
+          LLVM_VERSION: ${{ inputs.windows_llvm }}
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'llvm.exe'
+          $dir = Join-Path $env:RUNNER_TEMP 'llvm'
+          Invoke-WebRequest "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/LLVM-$env:LLVM_VERSION-win64.exe" -OutFile $exe
+          Start-Process -Wait -FilePath $exe -ArgumentList '/S', "/D=$dir"
+          "LIBCLANG_PATH=$dir\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Build whisper_stage
+        shell: bash
+        run: |
+          echo "LIBCLANG_PATH=${LIBCLANG_PATH:-unset (the runner default)}; $(clang --version | head -1)"
+          cargo build --locked --release --manifest-path stages/Cargo.toml -p whisper-stt
+      - uses: actions/download-artifact@v4
+        with:
+          name: clips
+          path: clips
+      - name: Time it
+        shell: bash
+        env:
+          RUNS: ${{ inputs.runs }}
+          THREADS: ${{ inputs.threads }}
+          OUT: latency-${{ runner.os }}.json
+        run: |
+          python scripts/whisper-latency.py --clips clips --runs "$RUNS" ${THREADS:+--threads "$THREADS"} \
+            --json "$OUT" --markdown "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: latency-${{ runner.os }}
+          path: latency-${{ runner.os }}.json
+          if-no-files-found: ignore

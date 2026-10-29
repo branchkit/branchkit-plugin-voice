@@ -11,6 +11,12 @@
 //! and one JSON line per item on stdout, in order: `{"id", "text",
 //! "decode_ms"}`, or `{"id", "text": "", "error"}`.
 //!
+//! Two optional request fields serve the latency bench
+//! (`scripts/whisper-latency.py`) and change nothing when left out:
+//! `threads`, the decode's thread count (default: the machine's, up to 8),
+//! and `use_gpu: false`, which keeps a GPU-built stage (Metal on macOS) on
+//! the CPU, so one machine can measure both.
+//!
 //! An item asking for noise (the sherpa probe's ladder) is refused with an
 //! error: this probe does not mix noise in.
 //!
@@ -31,6 +37,12 @@ struct Request {
     model: String,
     #[serde(default)]
     language: Option<String>,
+    /// The decode's thread count, at least 1.
+    #[serde(default)]
+    threads: Option<i32>,
+    /// false keeps a GPU-built stage on the CPU. Left out, the build decides.
+    #[serde(default)]
+    use_gpu: Option<bool>,
     items: Vec<Item>,
 }
 
@@ -103,10 +115,15 @@ pub fn run() -> i32 {
         eprintln!("probe: no ggml model at {}", req.model);
         return 1;
     };
-    let ctx = match WhisperContext::new_with_params(
-        &model.to_string_lossy(),
-        WhisperContextParameters::default(),
-    ) {
+    if req.threads.is_some_and(|n| n < 1) {
+        eprintln!("probe: threads must be at least 1");
+        return 1;
+    }
+    let mut params = WhisperContextParameters::default();
+    if let Some(gpu) = req.use_gpu {
+        params.use_gpu(gpu);
+    }
+    let ctx = match WhisperContext::new_with_params(&model.to_string_lossy(), params) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("probe: failed to load model {}: {e}", model.display());
@@ -114,7 +131,9 @@ pub fn run() -> i32 {
         }
     };
     let language = req.language.unwrap_or_else(|| "en".into());
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8) as i32);
+    let threads = req.threads.unwrap_or_else(|| {
+        std::thread::available_parallelism().map_or(4, |n| n.get().min(8) as i32)
+    });
     let mut out = std::io::stdout().lock();
     for item in &req.items {
         if item.noise.as_ref().is_some_and(|n| !n.is_null()) {
@@ -144,6 +163,21 @@ pub fn run() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The bench's fields are optional: a request without them (what
+    /// recognition.redecode sends) reads as before, and one with them keeps
+    /// them.
+    #[test]
+    fn request_bench_fields_are_optional() {
+        let plain: Request =
+            serde_json::from_str(r#"{"model": "/m", "items": [{"id": "a", "audio": "/a.wav"}]}"#)
+                .unwrap();
+        assert_eq!((plain.threads, plain.use_gpu), (None, None));
+        let bench: Request =
+            serde_json::from_str(r#"{"model": "/m", "threads": 4, "use_gpu": false, "items": []}"#)
+                .unwrap();
+        assert_eq!((bench.threads, bench.use_gpu), (Some(4), Some(false)));
+    }
 
     /// A model directory resolves to its ggml file; a file to itself.
     #[test]
