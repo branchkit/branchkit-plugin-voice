@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/branchkit/branchkit-plugin-voice/views"
 )
 
 func catalogForTest() []declaredModel {
@@ -41,7 +44,7 @@ func TestModelsStepFollowsTheDownloadAndTheModelOnDisk(t *testing.T) {
 	// Another plugin's download is not voice's progress: the step waits on
 	// the person, and says what holds the Download button.
 	state, summary = modelsStep(false, true, large, nil, cat)
-	if state != setupStateNeedsYou || summary != "Another plugin is downloading; download yours when it finishes" {
+	if state != setupStateNeedsYou || summary != "Another plugin is downloading; pick yours when it finishes" {
 		t.Fatalf("another plugin downloading: got %q %q", state, summary)
 	}
 	state, _ = modelsStep(false, true, large, map[string]string{large: "1.5 GB"}, cat)
@@ -243,5 +246,71 @@ func TestStartStepFoldsModelsThenChecks(t *testing.T) {
 		if got, _ := startStep(c.mState, "m", c.tState, "t", c.tried); got != c.want {
 			t.Errorf("models %s, checks %s (tried %v): got %s, want %s", c.mState, c.tState, c.tried, got, c.want)
 		}
+	}
+}
+
+// A running download puts its progress on the one row it names, whichever
+// list that row is in; a row already on this computer is never marked.
+func TestMarkDownloadingMarksTheRowTheRecordNames(t *testing.T) {
+	dict := []views.SetupModelView{{Ref: "voice/large"}, {Ref: "voice/small", Downloaded: true}}
+	cmds := []views.SetupModelView{{Ref: "voice/std"}, {Ref: "voice/light"}}
+	dl := &ModelDownloadData{Downloading: true, Progress: 0.54, Model: "voice/light"}
+	markDownloading(dict, dl)
+	markDownloading(cmds, dl)
+	for _, r := range dict {
+		if r.Downloading {
+			t.Errorf("a dictation row marked for the command model's download: %+v", r)
+		}
+	}
+	if cmds[0].Downloading || !cmds[1].Downloading || cmds[1].Pct != 54 {
+		t.Errorf("want Light at 54%%: %+v", cmds)
+	}
+	small := []views.SetupModelView{{Ref: "voice/small", Downloaded: true}}
+	markDownloading(small, &ModelDownloadData{Downloading: true, Model: "voice/small"})
+	if small[0].Downloading {
+		t.Errorf("a model on disk marked downloading: %+v", small[0])
+	}
+}
+
+// Picking a row asks for its download unless that download is the one
+// running: a second request would queue behind it and run again for nothing.
+func TestNeedsDownloadSkipsTheRunningOne(t *testing.T) {
+	ref := "voice/" + defaultCommandModel
+	if !needsDownload(ref, ModelDownloadData{}) {
+		t.Error("nothing running: download it")
+	}
+	if !needsDownload(ref, ModelDownloadData{Downloading: true, Model: "voice/other"}) {
+		t.Error("another model running: ask, the platform queues it")
+	}
+	if !needsDownload(ref, ModelDownloadData{Model: ref, Error: "checksum mismatch"}) {
+		t.Error("its last download failed: ask again")
+	}
+	if needsDownload(ref, ModelDownloadData{Downloading: true, Model: ref}) {
+		t.Error("it is the download running now: do not ask twice")
+	}
+}
+
+// Each list's pick takes only its own kind: the dictation setting is what the
+// dictation pipeline loads, and the command setting what the command stage
+// loads. The refusal comes before anything is written or downloaded.
+func TestPickTakesOnlyItsOwnKind(t *testing.T) {
+	t.Setenv("BRANCHKIT_PLUGIN_DIR", "..")
+	if len(dictationCatalog()) == 0 {
+		t.Fatal("no dictation model declared for this OS in ../plugin.json")
+	}
+	h := newTestHost()
+	if err := h.handleModelPick(&modelSetRequest{Name: defaultCommandModel}); err == nil || !strings.Contains(err.Error(), "not a dictation model") {
+		t.Errorf("a command model picked as dictation: %v", err)
+	}
+	if err := h.handleModelPick(&modelSetRequest{Name: "openai_whisper-huge"}); err == nil || !strings.Contains(err.Error(), "not a dictation model") {
+		t.Errorf("a model nobody declares picked as dictation: %v", err)
+	}
+	if err := h.handleCommandModelPick(&commandModelSetRequest{Name: dictationCatalog()[0].Name}); err == nil || !strings.Contains(err.Error(), "not a command model") {
+		t.Errorf("a dictation model picked as a command model: %v", err)
+	}
+	// A dictation model this OS declares gets past the check (the detached
+	// test plugin then refuses the settings write).
+	if err := h.handleModelPick(&modelSetRequest{Name: dictationCatalog()[0].Name}); err != nil && strings.Contains(err.Error(), "not a dictation model") {
+		t.Errorf("this OS's first dictation model refused: %v", err)
 	}
 }

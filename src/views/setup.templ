@@ -72,13 +72,27 @@ templ micMenu(m MicMenuView) {
 	</p>
 }
 
+// SetupModels is the Speech models card: one pick-one list per kind,
+// dictation and commands. A row states its facts and, on the right, where
+// the model stands (in use, on this computer, downloading, or what picking
+// it downloads). Picking a row makes it the one used, and starts its
+// download when it is not on this computer yet, in one press. The chosen
+// row still missing with nothing downloading (a fresh install's default, a
+// failed download) also offers a Download button.
 templ SetupModels(data SetupModelsViewData) {
 	<div class="models-tab setup-tab">
 		<p class="model-section-note">
-			Speech is recognized on this computer. Pick a size for dictation — bigger is more accurate and slower to download.
+			Pick one of each. A model that is not on this computer yet downloads when you pick it.
 		</p>
+		if note := data.WaitNote(); note != "" {
+			<p class="model-section-note" role="status" id="setup-models-wait">{ note }</p>
+		}
+		if data.DownloadError != "" {
+			<p class="check-note fail" role="alert">{ "Download failed: " + data.DownloadError }</p>
+		}
+		<div class="setup-kind-head" id="setup-dictation-head">Dictation</div>
 		<div class="model-row model-lang-row">
-			<label class="model-lang-label grow" for="dict-lang">Dictation language</label>
+			<label class="model-lang-label grow" for="dict-lang">Language</label>
 			<select
 				id="dict-lang"
 				class="model-lang-select"
@@ -90,89 +104,82 @@ templ SetupModels(data SetupModelsViewData) {
 				}
 			</select>
 		</div>
-		if data.Downloading {
-			<div class="model-block">
-				<div class="model-progress-head">
-					<span>Downloading…</span>
-					<span>{ fmt.Sprintf("%d%%", data.ProgressPct) }</span>
-				</div>
-				<div class="model-progress">
-					<div class="model-progress-fill" style={ data.ProgressStyle() }></div>
-				</div>
-			</div>
-		} else if data.OtherDownload != "" {
-			<div class="model-block" role="status" id="setup-other-download">
-				<div class="model-progress-head">
-					<span>{ data.OtherDownload + ". Downloads run one at a time, so voice's Download buttons come back when it finishes." }</span>
-				</div>
-			</div>
-		} else if data.DownloadError != "" {
-			<div class="model-block" role="alert">
-				<div class="model-progress-head">
-					<span>{ "Download failed: " + data.DownloadError }</span>
-				</div>
-			</div>
-		}
-		<div class="setup-models" role="list">
+		<div class="setup-models" role="radiogroup" aria-labelledby="setup-dictation-head">
 			for _, m := range data.Models {
-				<div class="model-row setup-model" role="listitem">
-					<div class="grow">
-						<div class="model-title">{ m.Size }</div>
-						<div class="model-desc">
-							{ m.Bytes } · { m.Languages }
-							if m.Note != "" {
-								· { m.Note }
-							}
-						</div>
-					</div>
-					<div class="model-actions">
-						if m.Chosen && m.Downloaded {
-							<span class="badge badge-core">In use</span>
-						} else if m.Chosen {
-							if data.OtherDownload != "" {
-								<button class="small primary" disabled aria-describedby="setup-other-download">Download</button>
-							} else if !data.Downloading {
-								<button class="small primary" data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", m.Ref)) }>Download</button>
-							}
-						} else if m.Downloaded {
-							<button class="small" data-on:click={ branchkit.MethodPost("model/set", ui.Args("name", m.Name)) }>Use</button>
-							<button class="icon-btn" title={ "Delete the " + m.Size + " model" } aria-label={ "Delete the " + m.Size + " model" }
-								data-on:click={ branchkit.MethodPost("model/delete", ui.Args("ref", m.Ref)) }>&#128465;</button>
-						} else {
-							<button class="small" data-on:click={ branchkit.MethodPost("model/set", ui.Args("name", m.Name)) }>Choose</button>
-						}
-					</div>
-				</div>
-			}
-			for _, m := range data.Commands {
-				<div class="model-row setup-model" role="listitem">
-					<div class="grow">
-						<div class="model-title">{ "Commands · " + m.Size }</div>
-						<div class="model-desc">
-							{ m.Bytes } · { m.Languages } · { m.Note }
-						</div>
-					</div>
-					<div class="model-actions">
-						if m.InUse {
-							<span class="badge badge-core">In use</span>
-						} else if m.Chosen && !m.Downloaded {
-							if data.OtherDownload != "" {
-								<button class="small primary" disabled aria-describedby="setup-other-download">Download</button>
-							} else if !data.Downloading {
-								<button class="small primary" data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", m.Ref)) }>Download</button>
-							}
-						} else if m.Downloaded {
-							<button class="small" data-on:click={ branchkit.MethodPost("command_model/set", ui.Args("name", m.Name)) }>Use</button>
-							<button class="icon-btn" title={ "Delete the " + m.Size + " command model" } aria-label={ "Delete the " + m.Size + " command model" }
-								data-on:click={ branchkit.MethodPost("model/delete", ui.Args("ref", m.Ref)) }>&#128465;</button>
-						} else {
-							<button class="small" data-on:click={ branchkit.MethodPost("command_model/set", ui.Args("name", m.Name)) }>Choose</button>
-						}
-					</div>
-				</div>
+				@setupModelRow(data, m, "model/pick", "dictation model")
 			}
 		</div>
+		if len(data.Commands) > 0 {
+			<div class="setup-kind-head" id="setup-commands-head">Commands</div>
+			<div class="setup-models" role="radiogroup" aria-labelledby="setup-commands-head">
+				for _, m := range data.Commands {
+					@setupModelRow(data, m, "command_model/pick", "command model")
+				}
+			</div>
+		}
 	</div>
+}
+
+// setupModelRow is one row of a Speech models list. The radio is a button,
+// as on the platform's Connections page: picking can start a download of a
+// gigabyte or more, so it takes a deliberate press (Space, Enter or a
+// click) on the row, never the arrow keys passing over it. Each row is its
+// own Tab stop. A row that cannot be picked now (a download is running) is
+// aria-disabled and points at the sentence that says why; the row already
+// picked, on this computer or on its way, posts nothing. kind names the
+// model in the delete and progress labels ("dictation model").
+templ setupModelRow(data SetupModelsViewData, m SetupModelView, pick, kind string) {
+	<div class={ "setup-model", templ.KV("is-chosen", m.Chosen), templ.KV("is-waiting", data.Waits(m)) }>
+		if data.Waits(m) {
+			<button type="button" role="radio" class="btn-bare setup-pick" aria-checked={ fmt.Sprint(m.Chosen) } aria-disabled="true" aria-describedby="setup-models-wait">
+				@setupModelFace(m)
+			</button>
+		} else if m.Chosen && (m.Downloaded || m.Downloading) {
+			<button type="button" role="radio" class="btn-bare setup-pick" aria-checked={ fmt.Sprint(m.Chosen) }>
+				@setupModelFace(m)
+			</button>
+		} else {
+			<button type="button" role="radio" class="btn-bare setup-pick" aria-checked={ fmt.Sprint(m.Chosen) } data-on:click={ branchkit.MethodPost(pick, ui.Args("name", m.Name)) }>
+				@setupModelFace(m)
+			</button>
+		}
+		if m.Chosen && !m.Downloaded && !m.Downloading {
+			if data.Busy() {
+				<button class="small primary" disabled aria-describedby="setup-models-wait">Download</button>
+			} else {
+				<button class="small primary" data-on:click={ branchkit.MethodPost("model/download", ui.Args("ref", m.Ref)) }>Download</button>
+			}
+		} else if m.Removable() {
+			<button class="icon-btn" title={ "Delete the " + m.Size + " " + kind } aria-label={ "Delete the " + m.Size + " " + kind }
+				data-on:click={ branchkit.MethodPost("model/delete", ui.Args("ref", m.Ref)) }>&#128465;</button>
+		}
+		if m.Downloading {
+			if m.Pct == 0 {
+				<div class="model-progress setup-model-bar bk-progress-indeterminate" role="progressbar" aria-label={ "Downloading the " + m.Size + " " + kind } aria-valuetext="Starting">
+					<div class="model-progress-fill" style={ m.ProgressStyle() }></div>
+				</div>
+			} else {
+				<div class="model-progress setup-model-bar" role="progressbar" aria-label={ "Downloading the " + m.Size + " " + kind } aria-valuemin="0" aria-valuemax="100" aria-valuenow={ fmt.Sprint(m.Pct) }>
+					<div class="model-progress-fill" style={ m.ProgressStyle() }></div>
+				</div>
+			}
+		}
+	</div>
+}
+
+// setupModelFace is what a row's radio reads: the mark, the name and facts,
+// and the state on the right. All of it is the radio's accessible name, so
+// a screen reader hears "Large · most accurate · Many languages · 1.51 GB,
+// 1.51 GB download" and knows what picking it does.
+templ setupModelFace(m SetupModelView) {
+	<span class="setup-radio" aria-hidden="true"></span>
+	<span class="setup-model-text">
+		<span class="model-title">{ m.Size }</span>
+		if m.Facts() != "" {
+			<span class="model-desc">{ " · " + m.Facts() }</span>
+		}
+	</span>
+	<span class={ "setup-model-state", templ.KV("is-in-use", m.InUse) }>{ m.State() }</span>
 }
 
 // checkMark is one check's state mark: a tick, a warning, or an empty

@@ -2057,10 +2057,73 @@ button.cal-word-chip-drill:focus-visible {
     display: flex;
     flex-direction: column;
     gap: var(--size--2);
-    & .setup-models { display: flex; flex-direction: column; gap: var(--size--2); }
+    /* Speech models: one pick-one list per kind. A row is a box holding the
+       radio (the facts and the state are its label), then a Download or
+       delete button, then a download's bar; the chosen row carries the
+       accent edge. The radio is a <button role="radio">, and .btn-bare's
+       reset lives in the platform's own page, not in this frame, so the row
+       states its whole look here. */
+    & .setup-kind-head {
+        font-size: var(--font-size--2);
+        font-weight: 600;
+        color: var(--_ink-dim);
+        margin-top: var(--size--2);
+    }
+    & .setup-models { display: flex; flex-direction: column; gap: var(--size--3); }
     & .setup-model {
-        padding: var(--size--2) 0;
-        border-top: var(--border-width-0) solid var(--neutral-variant-3);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0 var(--size--2);
+        padding-right: var(--size--1);
+        border: var(--border-width-0) solid var(--neutral-variant-3);
+        border-radius: var(--border-radius-1);
+        &.is-chosen {
+            border-color: var(--brand-accent-0);
+            background: color-mix(in oklab, var(--brand-accent-0) 6%, transparent);
+        }
+        &.is-waiting { opacity: 0.55; }
+        &:not(.is-chosen):not(.is-waiting):hover { border-color: var(--neutral-variant-5); }
+    }
+    & .setup-pick {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: var(--size--1);
+        margin: 0;
+        padding: var(--size--2) var(--size--1);
+        border: 0;
+        border-radius: var(--border-radius-1);
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        &[aria-disabled="true"] { cursor: default; }
+        &:focus-visible { outline: 2px solid var(--brand-accent-0); outline-offset: -2px; }
+    }
+    & .setup-radio {
+        flex-shrink: 0;
+        width: 1rem;
+        height: 1rem;
+        box-sizing: border-box;
+        border-radius: 50%;
+        border: var(--border-width-1) solid var(--neutral-variant-5);
+    }
+    & .setup-pick[aria-checked="true"] .setup-radio { border: 0.3rem solid var(--accent-fill); }
+    & .setup-model-text { flex: 1; min-width: 0; }
+    & .setup-model-state {
+        font-size: var(--font-size--2);
+        color: var(--_ink-dim);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        &.is-in-use { color: var(--_ink); }
+    }
+    & .setup-model-bar {
+        flex-basis: 100%;
+        height: 4px;
+        margin: 0 0 var(--size--2) var(--size--1);
     }
     & .setup-steps {
         margin: 0;

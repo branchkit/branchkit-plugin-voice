@@ -969,17 +969,65 @@ type SeqStepView struct {
 
 // --- Setup (the platform's Setup page frames these two tabs) ---
 
-// SetupModelView is one dictation size in the setup picker, as plain facts.
+// SetupModelView is one row of a Speech models list (a dictation size or a
+// command model), as plain facts and where the model stands.
 type SetupModelView struct {
 	Name       string
 	Size       string // "Large"
 	Bytes      string // "1.51 GB"
 	Languages  string // "English" / "Many languages"
 	Note       string // "best quality, slowest"
-	Chosen     bool   // the model the settings name
-	InUse      bool   // a command model: the one the stage loads now
+	Chosen     bool   // the model the settings name: the row's radio is on
+	InUse      bool   // the one that loads now: chosen and on this computer, or a command model standing in while the chosen one downloads
 	Downloaded bool
 	Ref        string
+	// Downloading is true while this model's own download runs, Pct how far
+	// it has got (0 until the first progress line).
+	Downloading bool
+	Pct         int
+}
+
+// Facts is the row's description: what it is for, its languages, its size.
+func (m SetupModelView) Facts() string {
+	var parts []string
+	for _, p := range []string{m.Note, m.Languages, m.Bytes} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// State is what the row says on its right: in use, already on this computer,
+// downloading, or what picking it would download.
+func (m SetupModelView) State() string {
+	switch {
+	case m.Downloading && m.Pct == 0:
+		return "Starting download…"
+	case m.Downloading:
+		return fmt.Sprintf("Downloading · %d%%", m.Pct)
+	case m.InUse:
+		return "In use"
+	case m.Downloaded:
+		return "On this computer"
+	case m.Chosen:
+		return "Not downloaded yet"
+	case m.Bytes != "":
+		return m.Bytes + " download"
+	default:
+		return "Download"
+	}
+}
+
+// ProgressStyle sets the row's bar fill.
+func (m SetupModelView) ProgressStyle() string {
+	return fmt.Sprintf("--progress: %d%%;", m.Pct)
+}
+
+// Removable is a model on this computer that nothing loads: the delete
+// button frees its space. The one in use, and the chosen one, stay.
+func (m SetupModelView) Removable() bool {
+	return m.Downloaded && !m.InUse && !m.Chosen
 }
 
 // GetStartedViewData is the Get started tab: the microphone menu, the model
@@ -1011,16 +1059,56 @@ type SetupModelsViewData struct {
 	Downloading bool
 	// OtherDownload says another plugin's download is running ("Another
 	// plugin (x) is downloading y"), or is "". The platform runs one
-	// download at a time, so the Download buttons stay off meanwhile and
-	// the page says why.
+	// download at a time, so the rows that would download wait meanwhile
+	// (Waits) and the page says why (WaitNote).
 	OtherDownload string
-	ProgressPct   int
 	// DownloadError is why the last download stopped short, when it did.
 	DownloadError string
 }
 
-// ProgressStyle is the bar's width as the custom property the models CSS
-// reads (see .model-progress-fill).
+// Waits reports whether row m cannot be picked now: picking it would start
+// a download, and one is already running (voice's or another plugin's).
+// The platform runs downloads one at a time, so a second one would wait
+// behind the first with nothing on the page saying it was asked for. A
+// model already on this computer never waits: switching to it downloads
+// nothing.
+func (d SetupModelsViewData) Waits(m SetupModelView) bool {
+	return !m.Downloaded && !m.Downloading && d.Busy()
+}
+
+// Busy reports whether a download is running, voice's or another plugin's.
+func (d SetupModelsViewData) Busy() bool {
+	return d.Downloading || d.OtherDownload != ""
+}
+
+// WaitNote is the sentence saying why the rows that wait cannot be picked
+// yet, or "" while nothing downloads. Voice's own download is named by its
+// row when it is one of the card's models; otherwise (a clean-up model from
+// the Dictation tab) the sentence says it is another of voice's.
+func (d SetupModelsViewData) WaitNote() string {
+	const rest = "Downloads run one at a time, so a model that is not on this computer yet can be picked when "
+	switch {
+	case d.OtherDownload != "":
+		return d.OtherDownload + ". " + rest + "it finishes."
+	case d.Downloading && d.rowDownloading():
+		return rest + "this one finishes."
+	case d.Downloading:
+		return "Voice is downloading another of its models. " + rest + "it finishes."
+	}
+	return ""
+}
+
+func (d SetupModelsViewData) rowDownloading() bool {
+	for _, rows := range [][]SetupModelView{d.Models, d.Commands} {
+		for _, m := range rows {
+			if m.Downloading {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ModelDownloadView is one model's download as a Download button shows it.
 type ModelDownloadView struct {
 	Active bool
@@ -1032,10 +1120,6 @@ type ModelDownloadView struct {
 // ProgressStyle sets the bar's fill.
 func (d ModelDownloadView) ProgressStyle() string {
 	return fmt.Sprintf("--progress: %d%%;", d.Pct)
-}
-
-func (d SetupModelsViewData) ProgressStyle() string {
-	return fmt.Sprintf("--progress: %d%%;", d.ProgressPct)
 }
 
 type SetupTryViewData struct {

@@ -577,6 +577,8 @@ func main() {
 	branchkit.HandleCommand(h.plugin, "config_update", h.handleConfigUpdate)
 	branchkit.HandleCommand(h.plugin, "model_set", h.handleModelSet)
 	branchkit.HandleCommand(h.plugin, "command_model_set", h.handleCommandModelSet)
+	branchkit.HandleCommand(h.plugin, "model_pick", h.handleModelPick)
+	branchkit.HandleCommand(h.plugin, "command_model_pick", h.handleCommandModelPick)
 	branchkit.HandleCommand(h.plugin, "command_models_compare", h.handleCommandModelsCompare)
 	branchkit.HandleCommand(h.plugin, "say_now_start", h.handleSayNowStart)
 	branchkit.HandleCommand(h.plugin, "say_now_stop", h.handleSayNowStop)

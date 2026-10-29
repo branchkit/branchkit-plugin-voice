@@ -93,6 +93,61 @@ func (h *Host) handleCommandModelSet(req *commandModelSetRequest) error {
 	return nil
 }
 
+// handleModelPick is a dictation row picked on Get started: the model becomes
+// the chosen one and, when it is not on this computer yet, its download
+// starts, in one press. Only a dictation model this OS can load is taken:
+// the setting is what the dictation pipeline loads.
+func (h *Host) handleModelPick(req *modelSetRequest) error {
+	if !isDictationModel(req.Name) {
+		return fmt.Errorf("%q is not a dictation model", req.Name)
+	}
+	if err := h.handleModelSet(req); err != nil {
+		return err
+	}
+	return h.downloadIfMissing(req.Name)
+}
+
+// handleCommandModelPick is a command row picked on Get started: chosen as by
+// handleCommandModelSet (the stage stays on a model it has until the chosen
+// one is on this computer), and downloaded when it is not yet.
+func (h *Host) handleCommandModelPick(req *commandModelSetRequest) error {
+	if err := h.handleCommandModelSet(req); err != nil {
+		return err
+	}
+	return h.downloadIfMissing(req.Name)
+}
+
+// downloadIfMissing asks the platform for one of this plugin's models unless
+// it is on this computer already or is the download running now: a second
+// request for it would wait in the platform's queue and run again for
+// nothing.
+func (h *Host) downloadIfMissing(name string) error {
+	if modelOnDisk(name) {
+		return nil
+	}
+	ref := h.modelRef(name)
+	if !needsDownload(ref, h.readModelDownload()) {
+		return nil
+	}
+	return h.plugin.ArtifactDownload(branchkit.ArtifactDownloadRequest{Ref: ref})
+}
+
+// needsDownload is downloadIfMissing's decision for a model not on this
+// computer: it is asked for unless the platform's record shows it running.
+func needsDownload(ref string, running ModelDownloadData) bool {
+	return !(running.Downloading && running.Model == ref)
+}
+
+// isDictationModel reports whether name is a dictation model this OS can load.
+func isDictationModel(name string) bool {
+	for _, m := range dictationCatalog() {
+		if m.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // syncCommandModel moves the command stage when the model it should load has
 // changed since it was last put on one: the settings arrived after the boot
 // warm-up used the default, they changed, or a chosen model's download

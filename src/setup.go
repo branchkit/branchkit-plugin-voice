@@ -144,9 +144,9 @@ func modelsStep(downloading, otherBusy bool, active string, onDisk map[string]st
 	size, ok := onDisk[active]
 	if !ok {
 		if otherBusy {
-			return setupStateNeedsYou, "Another plugin is downloading; download yours when it finishes"
+			return setupStateNeedsYou, "Another plugin is downloading; pick yours when it finishes"
 		}
-		return setupStateNeedsYou, "Choose a size and download it"
+		return setupStateNeedsYou, "Pick a dictation size to download it"
 	}
 	label := active
 	for _, m := range catalog {
@@ -250,6 +250,7 @@ func (h *Host) setupModelsData(dl *ModelDownloadData) views.SetupModelsViewData 
 			Languages:  f.Languages,
 			Note:       f.Note,
 			Chosen:     m.Name == current,
+			InUse:      downloaded && m.Name == current,
 			Downloaded: downloaded,
 			Ref:        h.modelRef(m.Name),
 		})
@@ -257,9 +258,9 @@ func (h *Host) setupModelsData(dl *ModelDownloadData) views.SetupModelsViewData 
 	cmdRows := h.commandModelRows(onDisk)
 	prefix := h.plugin.ID() + "/"
 	own := ownDownloadRunning(dl, prefix)
-	pct := 0
 	if own {
-		pct = int(dl.Progress * 100)
+		markDownloading(rows, dl)
+		markDownloading(cmdRows, dl)
 	}
 	return views.SetupModelsViewData{
 		Languages:     languageRows(h.config.Get().Language),
@@ -267,8 +268,19 @@ func (h *Host) setupModelsData(dl *ModelDownloadData) views.SetupModelsViewData 
 		Commands:      cmdRows,
 		Downloading:   own,
 		OtherDownload: otherPluginDownload(dl, prefix),
-		ProgressPct:   pct,
 		DownloadError: setupDownloadError(dl, prefix, current, onDisk),
+	}
+}
+
+// markDownloading puts a running download's progress on its row: the one
+// whose ref the platform's record names. The record holds one download, so
+// at most one row in all of Get started is marked.
+func markDownloading(rows []views.SetupModelView, dl *ModelDownloadData) {
+	for i := range rows {
+		if rows[i].Ref == dl.Model && !rows[i].Downloaded {
+			rows[i].Downloading = true
+			rows[i].Pct = int(dl.Progress * 100)
+		}
 	}
 }
 
@@ -316,9 +328,10 @@ func ownDownloadRunning(dl *ModelDownloadData, refPrefix string) bool {
 // download runs ("Another plugin (announcements) is downloading kokoro"), or
 // "". The platform runs downloads one at a time through one queue (the
 // platform's services/model_download.rs), and its record shows only the
-// running one: a Download click now would wait out of sight, behind a bar
-// that is not voice's. So voice's Download buttons stay off until it
-// finishes, and Get started says why instead of hiding them silently. A
+// running one: a download asked for now would wait out of sight, behind a
+// bar that is not voice's. So the models voice would have to download wait
+// (their rows and Download buttons off) until it finishes, and Get started
+// says why instead of hiding them silently. A
 // record from a platform that predates the model ref cannot be told apart,
 // and reads as another plugin's: nothing claims it is voice's.
 func otherPluginDownload(dl *ModelDownloadData, refPrefix string) string {
