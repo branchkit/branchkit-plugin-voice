@@ -83,11 +83,23 @@ jobs:
           Invoke-WebRequest "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/LLVM-$env:LLVM_VERSION-win64.exe" -OutFile $exe
           Start-Process -Wait -FilePath $exe -ArgumentList '/S', "/D=$dir"
           "LIBCLANG_PATH=$dir\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      # Built the way the release builds it: whisper.cpp at the stated x86-64
+      # instruction set (stages/whisper-stt/x86-64-baseline.cmake: AVX, AVX2,
+      # FMA, F16C, nothing newer), not the runner's own, so the numbers are
+      # the shipped binary's. The file writes the compile options ggml got
+      # into the cmake build folder; they go to the log and the summary.
       - name: Build whisper_stage
         shell: bash
         run: |
           echo "LIBCLANG_PATH=${LIBCLANG_PATH:-unset (the runner default)}; $(clang --version | head -1)"
+          if [ "$RUNNER_ARCH" = X64 ]; then
+            export CMAKE_PROJECT_INCLUDE="$(pwd -W 2>/dev/null || pwd)/stages/whisper-stt/x86-64-baseline.cmake"
+            echo "CMAKE_PROJECT_INCLUDE=$CMAKE_PROJECT_INCLUDE"
+          fi
           cargo build --locked --release --manifest-path stages/Cargo.toml -p whisper-stt
+          flags=$(find stages/target/release/build -name bk-ggml-arch-flags.txt -exec cat {} + 2>/dev/null)
+          echo "ggml compile options: ${flags:-(not written: no baseline file in this build)}"
+          echo "ggml compile options on ${{ runner.os }}: \`${flags:-none recorded}\`" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/download-artifact@v4
         with:
           name: clips
