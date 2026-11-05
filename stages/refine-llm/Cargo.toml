@@ -13,6 +13,12 @@ branchkit-stage-sdk = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+# The bindings llama-cpp-2 is built on, at its exact version, for the one
+# call it does not wrap: setting llama.cpp's log callback before the backend
+# starts (src/llama_log.rs). It adds no features; llama-cpp-2 picks those.
+llama-cpp-sys-2 = { version = "=0.1.158", default-features = false }
+# _exit, to end the process without ggml's exit-time teardown (src/main.rs).
+libc = "0.2"
 
 # CPU inference first (decided 2026-10-05): OpenMP off because
 # macOS has no libomp, and no GPU feature. llama.cpp's own CMake still

@@ -13,6 +13,7 @@
 //! share with the previous one, so a fixed system prompt is read once rather
 //! than on every request.
 
+mod llama_log;
 mod prompt;
 
 use std::num::NonZeroU32;
@@ -37,7 +38,22 @@ const N_CTX: u32 = 4096;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    stage::run(run()).await
+    stage::run(run_then_exit()).await
+}
+
+/// Run the stage, then end the process without the teardown C++ runs at
+/// exit. The model and its context are the process's for its whole life
+/// (leaked in `run`), and ggml's teardown asserts that every GPU buffer was
+/// freed first: on macOS an ordinary exit aborted (SIGABRT, and a crash
+/// report) every time the stage was stopped.
+async fn run_then_exit() -> Result {
+    let result = run().await;
+    if let Err(e) = &result {
+        stage_log::error(&format!("fatal: {e}"));
+    }
+    // SAFETY: _exit only ends the process. Nothing written is lost: every
+    // reply is flushed as it is sent, and stderr is unbuffered.
+    unsafe { libc::_exit(i32::from(result.is_err())) }
 }
 
 async fn run() -> Result {
@@ -45,13 +61,14 @@ async fn run() -> Result {
     let path = resolve_model(args.model.as_deref())?;
     stage_log::info(&format!("model: {}", path.display()));
 
+    // Before the backend starts: on macOS, starting it opens the GPU
+    // device, and that is already logged.
+    llama_log::route();
     // Leaked on purpose: the backend, model and context live as long as the
     // process, and the context borrows the model.
-    let backend: &'static LlamaBackend = Box::leak(Box::new({
-        let mut b = LlamaBackend::init().map_err(|e| format!("llama backend: {e}"))?;
-        b.void_logs();
-        b
-    }));
+    let backend: &'static LlamaBackend = Box::leak(Box::new(
+        LlamaBackend::init().map_err(|e| format!("llama backend: {e}"))?,
+    ));
     let loaded = Instant::now();
     // The GPU when asked (the platform passes --gpu where the stage.gpu
     // grant is in place), else, or when the GPU cannot start (another GPU's
