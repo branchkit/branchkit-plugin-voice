@@ -53,11 +53,11 @@ func TestOverlayGenerationsGuardStaleUpdates(t *testing.T) {
 	if gen == 0 {
 		t.Fatal("OpenOverlay returned generation 0")
 	}
-	h.UpdateOverlay(gen, branchkit.OutputKindProgress, "Preparing", "ready", nil)
+	h.UpdateOverlay(gen, branchkit.OutputKindProgress, "Preparing", "ready", "", nil)
 	if got := h.discovery.phrase; got != "ready" {
 		t.Fatalf("current-generation update ignored: %q", got)
 	}
-	h.UpdateOverlay(gen-1, branchkit.OutputKindProgress, "Stale", "stale", nil)
+	h.UpdateOverlay(gen-1, branchkit.OutputKindProgress, "Stale", "stale", "", nil)
 	if got := h.discovery.phrase; got != "ready" {
 		t.Fatalf("stale-generation update applied: %q", got)
 	}

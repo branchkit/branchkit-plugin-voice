@@ -51,8 +51,16 @@ func TestAFailedWarmSaysSoAndSettlesThePanel(t *testing.T) {
 	}
 	// A permission report redraws the panel with the same settled heading,
 	// not "Warming up voice…".
-	if title, _ := h.warmupHeading(); title != h.warmupTitle() {
+	title, phrase, footer := h.warmupHeading()
+	if title != h.warmupTitle() {
 		t.Fatalf("the heading after a failure is the settled title, got %q", title)
+	}
+	// Where to go next is in the footer, which the window wraps (a row's
+	// subtitle is cut to one line), and in the spoken phrase.
+	for _, s := range []string{footer, phrase} {
+		if !strings.Contains(s, "Settings › Voice › Models") || !strings.Contains(s, "Speech models on the Setup page") {
+			t.Fatalf("a failed engine points at the Models tab and Setup's Speech models, got %q", s)
+		}
 	}
 
 	// An error for an engine already up is a run's business, not the panel's.
@@ -67,6 +75,9 @@ func TestAFailedWarmSaysSoAndSettlesThePanel(t *testing.T) {
 	}
 	if got := h.warmupTitle(); got != h.readyTitle() {
 		t.Fatalf("all ready again = the ready title, got %q", got)
+	}
+	if _, _, footer := h.warmupHeading(); footer != "" {
+		t.Fatalf("all ready again = no pointer, got footer %q", footer)
 	}
 }
 

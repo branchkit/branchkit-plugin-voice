@@ -173,14 +173,32 @@ func (h *Host) warmupTitle() string {
 	return strings.Join(failed, " and ") + " couldn't start"
 }
 
-// warmupHeading is the readiness panel's title and spoken phrase: warming up
-// until every engine is ready or has failed, then the settled title.
-func (h *Host) warmupHeading() (string, string) {
+// warmupHeading is the readiness panel's title, spoken phrase and footer:
+// warming up until every engine is ready or has failed, then the settled
+// title. When an engine could not start, the footer and the phrase also
+// say where its model can be seen, downloaded or changed; the reason alone
+// left the person nowhere to go. The footer, not the engine's row, carries
+// it: the window cuts a row's subtitle to one line, a footer wraps.
+func (h *Host) warmupHeading() (title, phrase, footer string) {
 	if !h.warmupSettled() {
-		return "Warming up voice…", "warming up voice"
+		return "Warming up voice…", "warming up voice", ""
 	}
-	title := h.warmupTitle()
-	return title, title
+	title = h.warmupTitle()
+	if !h.anyEngineFailed() {
+		return title, title, ""
+	}
+	return title, title + ". " + failedEngineHint, failedEngineHint
+}
+
+// failedEngineHint is where to go when an engine could not start: where
+// the model it was loading can be seen, downloaded or changed.
+const failedEngineHint = "Check its model in Settings › Voice › Models, or under Speech models on the Setup page."
+
+// anyEngineFailed reports whether some tracked engine's warm failed.
+func (h *Host) anyEngineFailed() bool {
+	h.warmMu.Lock()
+	defer h.warmMu.Unlock()
+	return len(h.warmFailed) > 0
 }
 
 // refreshWarmup redraws the readiness panel and, once it has settled, gives
@@ -188,8 +206,8 @@ func (h *Host) warmupHeading() (string, string) {
 // enough to read when something could not start or typing is blocked.
 func (h *Host) refreshWarmup() {
 	gen := h.warmGen
-	title, phrase := h.warmupHeading()
-	h.hud.UpdateOverlay(gen, branchkit.OutputKindProgress, title, phrase, h.readinessSections())
+	title, phrase, footer := h.warmupHeading()
+	h.hud.UpdateOverlay(gen, branchkit.OutputKindProgress, title, phrase, footer, h.readinessSections())
 	if !h.warmupSettled() {
 		return
 	}
@@ -328,8 +346,8 @@ func (h *Host) handlePermissionChanged(permission string, granted bool) {
 		return
 	}
 	if gen := h.warmGen; gen != 0 {
-		title, phrase := h.warmupHeading()
-		h.hud.UpdateOverlay(gen, branchkit.OutputKindProgress, title, phrase, h.readinessSections())
+		title, phrase, footer := h.warmupHeading()
+		h.hud.UpdateOverlay(gen, branchkit.OutputKindProgress, title, phrase, footer, h.readinessSections())
 	}
 }
 

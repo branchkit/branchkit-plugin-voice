@@ -129,7 +129,10 @@ func (h *HUD) OpenOverlay(kind, title, phrase string, sections []branchkit.Outpu
 // UpdateOverlay supersedes the overlay's document, but only while it still
 // owns the overlay (generation unchanged) — if the user opened
 // commands/dictation in the meantime, their view wins and this is a no-op.
-func (h *HUD) UpdateOverlay(gen int, kind, title, phrase string, sections []branchkit.OutputSection) {
+// footer is the document's trailing line ("" for none): unlike a row's
+// subtitle, which the window cuts to one line, it wraps, so it is where a
+// sentence the person must read in full goes.
+func (h *HUD) UpdateOverlay(gen int, kind, title, phrase, footer string, sections []branchkit.OutputSection) {
 	h.discovery.mu.Lock()
 	if gen == 0 || h.discovery.generation != gen || !h.discovery.isOpen {
 		h.discovery.mu.Unlock()
@@ -138,6 +141,7 @@ func (h *HUD) UpdateOverlay(gen int, kind, title, phrase string, sections []bran
 	h.discovery.kind = kind
 	h.discovery.title = title
 	h.discovery.phrase = phrase
+	h.discovery.footer = footer
 	h.discovery.sections = sections
 	h.discovery.mu.Unlock()
 	h.pushDiscoveryState()
