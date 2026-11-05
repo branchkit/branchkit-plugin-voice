@@ -14,20 +14,20 @@ func HandleCloseFloats(p *branchkit.Plugin, fn branchkit.ActionHandlerFunc) {
 	p.HandleAction("voice.close_floats", fn)
 }
 
-// CommandParams is the params shape for action "voice.command (Command Capture)".
+// CommandParams is the params shape for action "voice.command (Give a Command)".
 type CommandParams struct {
 }
 
-// HandleCommand registers a typed handler for action "voice.command (Command Capture)".
+// HandleCommand registers a typed handler for action "voice.command (Give a Command)".
 func HandleCommand(p *branchkit.Plugin, fn branchkit.ActionHandlerFunc) {
 	p.HandleAction("voice.command", fn)
 }
 
-// ContinuousToggleParams is the params shape for action "voice.continuous_toggle (Toggle Continuous Mode)".
+// ContinuousToggleParams is the params shape for action "voice.continuous_toggle (Start or Stop Continuous Listening)".
 type ContinuousToggleParams struct {
 }
 
-// HandleContinuousToggle registers a typed handler for action "voice.continuous_toggle (Toggle Continuous Mode)".
+// HandleContinuousToggle registers a typed handler for action "voice.continuous_toggle (Start or Stop Continuous Listening)".
 func HandleContinuousToggle(p *branchkit.Plugin, fn branchkit.ActionHandlerFunc) {
 	p.HandleAction("voice.continuous_toggle", fn)
 }
@@ -60,11 +60,11 @@ func HandleEnterPicker(p *branchkit.Plugin, fn func(EnterPickerParams, *branchki
 	branchkit.HandleActionTyped(p, "voice.enter_picker", fn)
 }
 
-// HelpToggleParams is the params shape for action "voice.help_toggle (Toggle Help HUD)".
+// HelpToggleParams is the params shape for action "voice.help_toggle (Show or Hide the List of Commands)".
 type HelpToggleParams struct {
 }
 
-// HandleHelpToggle registers a typed handler for action "voice.help_toggle (Toggle Help HUD)".
+// HandleHelpToggle registers a typed handler for action "voice.help_toggle (Show or Hide the List of Commands)".
 func HandleHelpToggle(p *branchkit.Plugin, fn branchkit.ActionHandlerFunc) {
 	p.HandleAction("voice.help_toggle", fn)
 }

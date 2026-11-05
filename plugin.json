@@ -1116,7 +1116,7 @@
       ]
     },
     "command": {
-      "label": "Command Capture",
+      "label": "Give a Command",
       "modes": [
         "tap",
         "hold"
@@ -1130,14 +1130,14 @@
       ]
     },
     "continuous_toggle": {
-      "label": "Toggle Continuous Mode",
+      "label": "Start or Stop Continuous Listening",
       "modes": [
         "tap",
         "toggle"
       ]
     },
     "help_toggle": {
-      "label": "Toggle Help HUD",
+      "label": "Show or Hide the List of Commands",
       "modes": [
         "tap",
         "toggle"
