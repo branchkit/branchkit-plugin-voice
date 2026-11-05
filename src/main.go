@@ -88,18 +88,6 @@ const dictationBounceMS = 60
 
 // edState holds editor-domain state (form, schema caches) with its own mutex.
 
-func (h *Host) emitDiagnostic(msg string) {
-	// Notify, not the generated EventsAppend wrapper: that one is built on
-	// Call and would block. The typed payload comes from the generated
-	// request struct plus the method constant, which needs no new SDK
-	// surface — same shape as plugins/browser's emitEvent.
-	data, _ := json.Marshal(map[string]any{"message": msg})
-	h.plugin.Notify(branchkit.MethodEventsAppend, &branchkit.EventsAppendRequest{
-		EventType: "diagnostic.message",
-		Data:      data,
-	})
-}
-
 type ListSchemaInfo = branchkit.SettingsListSchemaInfo
 type TagSchemaInfo = branchkit.SettingsTagSchemaInfo
 
@@ -375,9 +363,6 @@ func main() {
 
 	// Wire session dependencies
 	h.sess.Platform = h.plugin
-	h.sess.PluginNotify = func(method string, params any) {
-		h.plugin.Notify(method, params)
-	}
 	h.sess.InitRPC()
 
 	// Mirror layout characters from the keyboard plugin (for speech

@@ -1,7 +1,6 @@
 package session
 
 import (
-	"encoding/json"
 	"sync"
 	"time"
 
@@ -176,12 +175,9 @@ type State struct {
 	// one tie never clears a later one.
 	tieGen uint64
 
-	// External dependencies — set once at startup via main.go, before any handler calls.
-	// Platform is the typed SDK surface (generated wrappers); PluginNotify stays
-	// a raw notify because events.append's generated wrapper is a request, and
-	// these diagnostics are fire-and-forget. nil leaves either unwired.
-	Platform     Platform
-	PluginNotify func(method string, params any)
+	// External dependency — set once at startup via main.go, before any handler
+	// calls: the typed SDK surface (generated wrappers).
+	Platform Platform
 
 	// Swappable RPC function — set to its default by InitRPC(), replaced in
 	// tests. SetVoiceMode, SetShellIcon and Calib used to sit beside it: all
@@ -694,8 +690,10 @@ func (s *State) ClearCalibrationConsumed() {
 
 // --- Pipeline State ---
 
-func (s *State) emitPipelineEvent(msg string) {
-	s.notifyEvent("diagnostic.message", map[string]any{"message": msg})
+// logPipelineState writes one pipeline state transition to the log. msg
+// names states only, never anything the person said.
+func (s *State) logPipelineState(msg string) {
+	branchkit.Logf("voice", "%s", msg)
 }
 
 func (s *State) SetCmdRecActive() {
@@ -703,7 +701,7 @@ func (s *State) SetCmdRecActive() {
 	prev := s.cmdRecState
 	s.cmdRecState = PipelineActive
 	s.mu.Unlock()
-	s.emitPipelineEvent("pstate: command_recognition " + prev.String() + " → active")
+	s.logPipelineState("pstate: command_recognition " + prev.String() + " → active")
 }
 
 func (s *State) SetCmdRecInactive() {
@@ -711,7 +709,7 @@ func (s *State) SetCmdRecInactive() {
 	prev := s.cmdRecState
 	s.cmdRecState = PipelineInactive
 	s.mu.Unlock()
-	s.emitPipelineEvent("pstate: command_recognition " + prev.String() + " → inactive")
+	s.logPipelineState("pstate: command_recognition " + prev.String() + " → inactive")
 }
 
 func (s *State) SuppressCommandRecognition() {
@@ -723,7 +721,7 @@ func (s *State) SuppressCommandRecognition() {
 	cur := s.cmdRecState
 	s.mu.Unlock()
 	if cur != prev {
-		s.emitPipelineEvent("pstate: command_recognition " + prev.String() + " → suppressed")
+		s.logPipelineState("pstate: command_recognition " + prev.String() + " → suppressed")
 	}
 }
 
@@ -736,7 +734,7 @@ func (s *State) UnsuppressCommandRecognition() {
 	cur := s.cmdRecState
 	s.mu.Unlock()
 	if cur != prev {
-		s.emitPipelineEvent("pstate: command_recognition " + prev.String() + " → active")
+		s.logPipelineState("pstate: command_recognition " + prev.String() + " → active")
 	}
 }
 
@@ -772,7 +770,7 @@ func (s *State) StartDictationRecording() uint64 {
 		s.drainTimer = nil
 	}
 	s.mu.Unlock()
-	s.emitPipelineEvent("pstate: dictation " + prev.String() + " → recording")
+	s.logPipelineState("pstate: dictation " + prev.String() + " → recording")
 	return gen
 }
 
@@ -808,13 +806,13 @@ func (s *State) DrainDictation() {
 			s.drainTimer.Stop()
 		}
 		s.drainTimer = time.AfterFunc(drainBackstop, func() {
-			s.emitPipelineEvent("pstate: dictation drain timeout — forcing finish")
+			s.logPipelineState("pstate: dictation drain timeout — forcing finish")
 			s.FinishDictationIfDraining()
 		})
 	}
 	s.mu.Unlock()
 	if prev == PipelineRecording {
-		s.emitPipelineEvent("pstate: dictation recording → draining")
+		s.logPipelineState("pstate: dictation recording → draining")
 	}
 }
 
@@ -824,7 +822,7 @@ func (s *State) FinishDictation() {
 	s.finishDictationLocked()
 	s.mu.Unlock()
 	if prev != PipelineInactive {
-		s.emitPipelineEvent("pstate: dictation " + prev.String() + " → inactive")
+		s.logPipelineState("pstate: dictation " + prev.String() + " → inactive")
 	}
 	if prev == PipelineDraining {
 		s.onDictationFinished()
@@ -851,7 +849,7 @@ func (s *State) FinishDictationIfDraining() {
 	s.finishDictationLocked()
 	lost := s.onDictationLost
 	s.mu.Unlock()
-	s.emitPipelineEvent("pstate: dictation draining → inactive (no transcript)")
+	s.logPipelineState("pstate: dictation draining → inactive (no transcript)")
 	s.onDictationFinished()
 	if lost != nil {
 		lost()
@@ -983,7 +981,7 @@ func (s *State) SetCmdRecAsideForHold() (stopPersistent bool) {
 	stopPersistent = s.cmdRecState == PipelineActive
 	state := s.cmdRecState
 	s.mu.Unlock()
-	s.emitPipelineEvent("pstate: command_recognition " + state.String() + ", set aside for a command hold")
+	s.logPipelineState("pstate: command_recognition " + state.String() + ", set aside for a command hold")
 	return stopPersistent
 }
 
@@ -1019,7 +1017,7 @@ func (s *State) releaseCmdRecAside(underHold bool) (restart bool) {
 	restart = s.continuousBaseLocked() && s.cmdRecState == PipelineActive
 	state := s.cmdRecState
 	s.mu.Unlock()
-	s.emitPipelineEvent("pstate: command_recognition " + state.String() + ", no longer set aside for a command hold")
+	s.logPipelineState("pstate: command_recognition " + state.String() + ", no longer set aside for a command hold")
 	return restart
 }
 
@@ -1040,7 +1038,7 @@ func (s *State) ReturnCmdRecAtRelease() (restart bool) {
 	s.openCmdRecHeldBackLocked()
 	s.cmdRecHeldBack = make(chan struct{})
 	s.mu.Unlock()
-	s.emitPipelineEvent("pstate: command_recognition active, back at the hold's release; its transcripts wait for the hold's cleanup")
+	s.logPipelineState("pstate: command_recognition active, back at the hold's release; its transcripts wait for the hold's cleanup")
 	return true
 }
 
@@ -1241,24 +1239,4 @@ type Platform interface {
 	VocabularyCommit() error
 	OutputState(req branchkit.OutputStateRequest) (*branchkit.OutputStateResponse, error)
 	OutputClear(req branchkit.OutputClearRequest) (*branchkit.OutputClearResponse, error)
-}
-
-// notifyEvent appends one event to the structured log as a NOTIFICATION — no
-// reply awaited, errors unobserved, as these always were. The payload is the
-// generated request type so the wire shape tracks the spec; only the method
-// dispatch is by name, because the generated EventsAppend wrapper is a request.
-func (s *State) notifyEvent(eventType string, data any) {
-	if s.PluginNotify == nil {
-		return
-	}
-	req := branchkit.EventsAppendRequest{EventType: eventType}
-	if data != nil {
-		raw, err := json.Marshal(data)
-		if err != nil {
-			branchkit.Logf("voice", "events.append %s: marshal failed: %v", eventType, err)
-			return
-		}
-		req.Data = raw
-	}
-	s.PluginNotify(branchkit.MethodEventsAppend, req)
 }

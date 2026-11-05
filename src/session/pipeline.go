@@ -5,8 +5,9 @@ import (
 )
 
 // ApplyOrchestrateResults applies everything one orchestration produced
-// EXCEPT its actions: discovery mutations, the session event log, and the
-// main HUD push.
+// EXCEPT its actions: discovery mutations, the outcome, and the main HUD
+// push. What matched, what missed and every action run are the platform's to
+// record, and it does.
 //
 // The actions are deliberately not here. They go back to the platform on the
 // `on_transcript` response and the platform executes them, which is what
@@ -26,10 +27,6 @@ func (s *State) ApplyOrchestrateResults(resp OrchestrateResponse) {
 	}
 	if resp.Outcome != nil {
 		s.hud.PushOutcome(*resp.Outcome)
-	}
-
-	for _, evt := range resp.Events {
-		s.notifyEvent(evt.Type, evt.Data)
 	}
 
 	s.hud.PushMainHUD()

@@ -29,12 +29,6 @@ type OrchestrateRequest struct {
 	ActiveTags []string `json:"active_tags"`
 }
 
-// EventEntry is a structured event log entry returned to the platform.
-type EventEntry struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
-}
-
 // TagChanges describes tag mutations from a command match.
 //
 // Set/Clear are string tag names surfaced to the shell for observability
@@ -92,7 +86,6 @@ type OrchestrateResponse struct {
 	// an `outcome` document after the discovery mutation is applied, so a
 	// renderer that cannot show the list still conveys the result.
 	Outcome     *string          `json:"outcome,omitempty"`
-	Events      []EventEntry     `json:"events,omitempty"`
 	Completions *resolveResponse `json:"-"`
 	// Why the utterance stopped resolving before its last word, for the
 	// History record: "" when every word was used (or dropped as silence by
@@ -662,7 +655,7 @@ func RepeatCount(action *branchkit.Action) int {
 }
 
 // expandRepeat turns one resolved `voice.repeat` into N copies of the last
-// matched action, plus the events that record it happened.
+// matched action. The platform records each copy as it runs it.
 //
 // This is the whole of repeat now. It used to be a round trip: the platform
 // executed a `voice.repeat` action, which routed back to voice's on_action,
@@ -677,21 +670,19 @@ func RepeatCount(action *branchkit.Action) int {
 //
 // `voice.repeat` remains a declared action type: it is user-authorable in
 // the command editor, and a keybind can still target it.
-func (s *State) expandRepeat(action *branchkit.Action) ([]branchkit.Action, []EventEntry) {
+func (s *State) expandRepeat(action *branchkit.Action) []branchkit.Action {
 	last := s.GetLastMatch()
 	if last == nil || last.Action == nil {
 		branchkit.Logf("voice", "repeat: no previous command")
-		return nil, nil
+		return nil
 	}
 	count := RepeatCount(action)
 	if count == 0 {
-		return nil, nil
+		return nil
 	}
 
 	branchkit.Logf("voice", "repeat: expanding to %d action(s)", count)
-	label := ActionLabel(last.Action)
 	actions := make([]branchkit.Action, 0, count)
-	events := make([]EventEntry, 0, count)
 	for i := 0; i < count; i++ {
 		// Each entry is its own struct value. `Params` and `Actions` still
 		// share backing arrays with the remembered action, which is fine
@@ -699,16 +690,8 @@ func (s *State) expandRepeat(action *branchkit.Action) ([]branchkit.Action, []Ev
 		// and executes. This used to copy bytes because the whole action
 		// was one buffer handed over N times.
 		actions = append(actions, *last.Action)
-		events = append(events, EventEntry{
-			Type: "command_repeat",
-			Data: map[string]interface{}{
-				"repeat_index": i + 1,
-				"repeat_total": count,
-				"action":       label,
-			},
-		})
 	}
-	return actions, events
+	return actions
 }
 
 // ActionLabels renders a list of actions for a log or test message.
@@ -748,7 +731,6 @@ type matchResult struct {
 	actions      []branchkit.Action
 	setTags      []string
 	clearTags    []string
-	events       []EventEntry
 	matched      bool     // at least one command matched
 	outcomes     []string // the words of each command that produced an action
 	scopeDropped int      // words dropped by scope filtering (treat as silence)
@@ -803,7 +785,7 @@ type tieMatch struct {
 // used to live here, and nothing in it was about speech; every other way of
 // issuing commands needs it too. What stays here is what IS
 // voice's: its own commands (repeat, a spoken tie pick), the escape's effect
-// on discovery, and the events and outcome it narrates.
+// on discovery, and the outcome it narrates.
 //
 // One ordering change came with the move: a spoken tie pick used to
 // re-resolve its winner (applying the winner's tag writes) BEFORE the rest of
@@ -847,13 +829,6 @@ func (s *State) matchWords(words []string) matchResult {
 			resp.ConsumedCount, resp.SetsTags, resp.ClearsTags, resp.OwnerPlugin)
 
 		result.matched = true
-		result.events = append(result.events, EventEntry{
-			Type: "match",
-			Data: map[string]interface{}{
-				"phrase":       spoken,
-				"action_count": 1,
-			},
-		})
 
 		if resp.Action != nil {
 			// The command's words are the outcome — what the person will
@@ -896,9 +871,7 @@ func (s *State) matchWords(words []string) matchResult {
 				//
 				// Deliberately NOT recorded as the new lastMatch: "again
 				// again" must repeat the original command, not itself.
-				repeated, repeatEvents := s.expandRepeat(resp.Action)
-				result.actions = append(result.actions, repeated...)
-				result.events = append(result.events, repeatEvents...)
+				result.actions = append(result.actions, s.expandRepeat(resp.Action)...)
 			default:
 				result.actions = append(result.actions, *resp.Action)
 				s.SetLastMatch(&LastMatch{Action: resp.Action})
@@ -1236,16 +1209,6 @@ func (s *State) orchestrate(req *OrchestrateRequest) OrchestrateResponse {
 		}
 	}
 
-	if len(req.Words) > 0 && len(result.actions) == 0 && len(result.events) == 0 {
-		result.events = append(result.events, EventEntry{
-			Type: "miss",
-			Data: map[string]interface{}{
-				"words":       req.Words,
-				"active_tags": req.ActiveTags,
-			},
-		})
-	}
-
 	// Fallthrough detection: a multi-word utterance that produced multiple
 	// separate single-word matches (instead of a single multi-word command
 	// match) usually means a gated command the user intended didn't fire,
@@ -1285,7 +1248,6 @@ func (s *State) orchestrate(req *OrchestrateRequest) OrchestrateResponse {
 		Actions:     result.actions,
 		TagChanges:  tagChanges,
 		Discovery:   disc.mutation,
-		Events:      result.events,
 		Completions: result.completions,
 		Outcome:     outcome,
 		Stop:        result.stop,

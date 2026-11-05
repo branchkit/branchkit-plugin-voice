@@ -324,8 +324,8 @@ func TestMatchWordsSingleMatch(t *testing.T) {
 	if len(result.actions) != 1 {
 		t.Fatalf("expected 1 action, got %d", len(result.actions))
 	}
-	if len(result.events) != 1 || result.events[0].Type != "match" {
-		t.Fatal("expected match event")
+	if len(result.outcomes) != 1 || result.outcomes[0] != "undo" {
+		t.Fatalf("outcomes = %v, want [undo]", result.outcomes)
 	}
 }
 
@@ -452,11 +452,8 @@ func TestMatchWordsActsOnEveryStep(t *testing.T) {
 	if got := ActionLabels(result.actions); len(result.actions) != 2 {
 		t.Fatalf("expected desk_mode then desk_switch, got %s", got)
 	}
-	if len(result.events) != 2 || result.events[1].Data.(map[string]interface{})["phrase"] != "five" {
-		t.Fatalf("expected one match event per step, the second for \"five\": %+v", result.events)
-	}
-	if want := []string{"desk", "five"}; len(result.outcomes) != 2 || result.outcomes[1] != want[1] {
-		t.Fatalf("outcomes = %v, want %v", result.outcomes, want)
+	if want := []string{"desk", "five"}; len(result.outcomes) != 2 || result.outcomes[0] != want[0] || result.outcomes[1] != want[1] {
+		t.Fatalf("outcomes = %v, want one per step: %v", result.outcomes, want)
 	}
 }
 
@@ -961,7 +958,9 @@ func TestOrchestrateMatchWithTagChanges(t *testing.T) {
 	}
 }
 
-func TestOrchestrateMissEventOnNoMatch(t *testing.T) {
+// A miss runs nothing and leaves the engine alone; Stop carries it to the
+// History record. The platform records the no-match itself.
+func TestOrchestrateMissRunsNothing(t *testing.T) {
 	s := newTestState()
 	s.stubRPC(rpcStubs{})
 
@@ -969,8 +968,9 @@ func TestOrchestrateMissEventOnNoMatch(t *testing.T) {
 	req.Words = []string{"gibberish", "nonsense"}
 	resp := s.orchestrate(req)
 
-	if len(resp.Events) != 1 || resp.Events[0].Type != "miss" {
-		t.Errorf("expected miss event, got %v", resp.Events)
+	if len(resp.Actions) != 0 || resp.ResetEngine || resp.Stop != "miss" {
+		t.Errorf("miss: actions=%d reset_engine=%v stop=%q, want 0, false, \"miss\"",
+			len(resp.Actions), resp.ResetEngine, resp.Stop)
 	}
 }
 

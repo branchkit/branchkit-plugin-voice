@@ -931,15 +931,6 @@ func (h *Host) handleVoiceRepeat(req *branchkit.OnActionRequest) (any, error) {
 				i+1, count, resp.Status, msg)
 			break
 		}
-		data, _ := json.Marshal(map[string]any{
-			"repeat_index": i + 1,
-			"repeat_total": count,
-			"action":       session.ActionLabel(lastMatch.Action),
-		})
-		h.plugin.Notify(branchkit.MethodEventsAppend, &branchkit.EventsAppendRequest{
-			EventType: "command_repeat",
-			Data:      data,
-		})
 	}
 
 	return h.handled(), nil
@@ -1043,7 +1034,6 @@ func (h *Host) handlePipelineTranscript(payload branchkit.PipelineTranscriptEven
 		if !h.sess.IsDictationAccepting() {
 			branchkit.Logf("voice", "pipeline transcript: %d chars → dropped (dictation %s) tr=%s",
 				len(payload.Text), h.sess.GetDictationPipelineState(), h.traceID())
-			h.emitDiagnostic("pstate: dictation transcript dropped (state=" + h.sess.GetDictationPipelineState().String() + ")")
 			return
 		}
 		if h.sess.GetSpeakTranscriptPending() {
@@ -1156,7 +1146,6 @@ func (h *Host) handleOnTranscript(req *branchkit.OnTranscriptRequest) (any, erro
 	if h.sess.DropsCommandTranscripts() {
 		branchkit.Logf("voice", "on_transcript: %d words → dropped (command_recognition suppressed) tr=%s",
 			len(strings.Fields(req.Text)), h.traceID())
-		h.emitDiagnostic("pstate: command_recognition transcript dropped (suppressed)")
 		return &branchkit.OnTranscriptResponse{}, nil
 	}
 

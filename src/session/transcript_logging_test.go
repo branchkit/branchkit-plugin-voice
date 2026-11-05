@@ -96,3 +96,27 @@ func TestTieLogsNoSpokenWords(t *testing.T) {
 	})
 	assertNoSpokenWords(t, "tie picked", logged)
 }
+
+// A pipeline state change is a log line beside the platform's own: the
+// states by name, nothing the person said.
+func TestPipelineStateChangesAreLogged(t *testing.T) {
+	s := newTestState()
+	logged := captureStderr(t, func() {
+		s.SetCmdRecActive()
+		s.SuppressCommandRecognition()
+		s.StartDictationRecording()
+		s.DrainDictation()
+		s.FinishDictation()
+	})
+	for _, want := range []string{
+		"[voice] pstate: command_recognition inactive → active",
+		"[voice] pstate: command_recognition active → suppressed",
+		"[voice] pstate: dictation inactive → recording",
+		"[voice] pstate: dictation recording → draining",
+		"[voice] pstate: dictation draining → inactive",
+	} {
+		if !strings.Contains(logged, want) {
+			t.Errorf("the log lacks %q:\n%s", want, logged)
+		}
+	}
+}
