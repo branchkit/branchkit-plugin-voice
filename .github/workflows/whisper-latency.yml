@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   clips:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,7 +53,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # The images the app's release workflow builds whisper_stage on, so
+        # the numbers describe the binary that ships. Not the -latest labels:
+        # ubuntu-latest moved to 26.04 (clang 21), whose libclang gives
+        # whisper-rs-sys' bindgen 0.69 an opaque whisper_full_params and the
+        # build fails (2026-11-05).
+        os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: '1'   # Windows' console code page would otherwise mangle the output
