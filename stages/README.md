@@ -70,6 +70,12 @@ cargo build --release -p whisper-stt
 python3 ../scripts/whisper-latency.py --json latency.json
 ```
 
+The stage logs, once at start (and the probe on stderr), the instruction
+sets its whisper.cpp was compiled for and the threads each decode uses:
+`whisper.cpp: AVX = 1 | AVX2 = 1 | ...; threads: 4 per decode (8 available)`.
+On Windows, ggml's threads run through OpenMP (MSVC's runtime, `vcomp140.dll`):
+ggml's own thread pool spins without pausing under MSVC.
+
 The `Whisper latency` workflow (`../.github/workflows/whisper-latency.yml`)
 runs the same script on x86 Linux and Windows runners. It starts only by
 hand: `gh workflow run whisper-latency.yml`.

@@ -48,6 +48,7 @@ async fn run() -> Result {
     let args = parse_stage_args();
     let model_path = resolve_model(args.model.as_deref())?;
     stage_log::info(&format!("model: {}", model_path.display()));
+    stage_log::info(&build_report(args.threads));
 
     let ctx = WhisperContext::new_with_params(
         &model_path.to_string_lossy(),
@@ -344,6 +345,19 @@ fn decode(
     Ok((parts.join(" "), tokens))
 }
 
+/// One line naming what this binary's whisper.cpp was built with and the
+/// thread count every decode passes to `whisper_full`, as the binary sees
+/// them: the instruction sets ggml was compiled for ("AVX2 = 1 | ..."), and
+/// the threads. A decode that runs ten times slower on one OS than another
+/// is read from this line first.
+fn build_report(threads: i32) -> String {
+    let cpus = std::thread::available_parallelism().map_or(0, |n| n.get());
+    format!(
+        "whisper.cpp: {}; threads: {threads} per decode ({cpus} available)",
+        whisper_rs::print_system_info().trim()
+    )
+}
+
 struct StageArgs {
     model: Option<String>,
     language: String,
@@ -485,4 +499,18 @@ fn resolve_model(arg: Option<&str>) -> Result<std::path::PathBuf> {
             .unwrap_or_else(|| "<data dir>/models/whisper".into())
     )
     .into())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_build_report_names_the_instruction_sets_and_the_decode_threads() {
+        let line = super::build_report(3);
+        assert!(line.starts_with("whisper.cpp: AVX = "), "{line}");
+        assert!(
+            line.contains("AVX2 = ") && line.contains("NEON = "),
+            "{line}"
+        );
+        assert!(line.contains("; threads: 3 per decode ("), "{line}");
+    }
 }

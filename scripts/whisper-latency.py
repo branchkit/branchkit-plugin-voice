@@ -339,6 +339,11 @@ def run_probe(stage, req):
     wall_ms = (time.monotonic() - started) * 1000
     if proc.returncode != 0:
         raise RuntimeError(f"whisper_stage probe exited {proc.returncode}: {proc.stderr.strip()[-2000:]}")
+    # The stage's own line: the instruction sets its whisper.cpp was built
+    # for and the threads it decodes with, as the binary sees them.
+    for line in proc.stderr.splitlines():
+        if line.startswith("probe: whisper.cpp:"):
+            print(f"  {line}", file=sys.stderr)
     lines = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
     return lines, wall_ms
 

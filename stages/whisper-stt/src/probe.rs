@@ -134,6 +134,8 @@ pub fn run() -> i32 {
     let threads = req.threads.unwrap_or_else(|| {
         std::thread::available_parallelism().map_or(4, |n| n.get().min(8) as i32)
     });
+    // stderr: stdout carries only the result lines.
+    eprintln!("probe: {}", crate::build_report(threads));
     let mut out = std::io::stdout().lock();
     for item in &req.items {
         if item.noise.as_ref().is_some_and(|n| !n.is_null()) {
