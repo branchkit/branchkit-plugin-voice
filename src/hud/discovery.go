@@ -19,6 +19,11 @@ type OnExpire struct {
 // package no longer produces markup for the channel.
 type discoveryState struct {
 	mu sync.Mutex
+	// pubMu orders what is published on the channel: a document is built and
+	// sent (or the channel cleared) under it, so two publishers cannot send
+	// in the opposite order from the one their decisions were made in.
+	// Taken before mu, never after.
+	pubMu sync.Mutex
 
 	isOpen   bool
 	kind     string
@@ -196,23 +201,22 @@ func (h *HUD) CloseDiscovery() {
 	if !h.closeDiscoveryState() {
 		return
 	}
-	h.discovery.mu.Lock()
-	transcribing := h.discovery.transcribing
-	h.discovery.mu.Unlock()
-	if transcribing {
-		// A dictation released before the window opened is still being
-		// transcribed: that is what is true on the channel again.
-		h.pushDiscoveryState()
-	} else {
-		// Nothing is true on the channel now: clear the state (every renderer
-		// stops conveying it, generation-stamped).
-		h.clearDiscoveryState()
+	// A dictation released before the window opened and still being
+	// transcribed is what is true on the channel again; otherwise nothing
+	// is: clear the state (every renderer stops conveying it,
+	// generation-stamped). Decided and sent under pubMu, so a transcript
+	// landing meanwhile cannot leave the closed window's document standing.
+	h.discovery.pubMu.Lock()
+	if !h.publishDiscoveryLocked() {
+		h.clearDiscoveryLocked()
 	}
+	h.discovery.pubMu.Unlock()
 	h.signalShell("hud:close:discovery")
 }
 
-// clearDiscoveryState says nothing is true on the discovery channel.
-func (h *HUD) clearDiscoveryState() {
+// clearDiscoveryLocked says nothing is true on the discovery channel.
+// Callers hold pubMu.
+func (h *HUD) clearDiscoveryLocked() {
 	if _, err := h.outputClear(branchkit.OutputClearRequest{Channel: ChannelDiscovery}); err != nil {
 		branchkit.Logf("voice", "discovery: output.clear failed: %v", err)
 	}
@@ -284,23 +288,24 @@ func (h *HUD) SetTranscribing(on bool) {
 	if on && !h.Config().IsChannelEnabled(ChannelDiscovery) {
 		return
 	}
+	h.discovery.pubMu.Lock()
+	defer h.discovery.pubMu.Unlock()
 	h.discovery.mu.Lock()
 	if h.discovery.transcribing == on {
 		h.discovery.mu.Unlock()
 		return
 	}
 	h.discovery.transcribing = on
-	open := h.discovery.isOpen
 	shown := h.discovery.transcribingShown
 	if !on {
 		h.discovery.transcribingShown = false
 	}
 	h.discovery.mu.Unlock()
 	switch {
-	case on && !open:
-		h.pushDiscoveryState()
-	case !on && shown:
-		h.clearDiscoveryState()
+	case on:
+		h.publishDiscoveryLocked()
+	case shown:
+		h.clearDiscoveryLocked()
 	}
 }
 
@@ -378,6 +383,8 @@ func (h *HUD) PushOutcome(phrase string) {
 		Locale:  "en",
 		V:       1,
 	}
+	h.discovery.pubMu.Lock()
+	defer h.discovery.pubMu.Unlock()
 	h.discovery.mu.Lock()
 	h.discovery.transcribingShown = false
 	h.discovery.mu.Unlock()
@@ -397,6 +404,15 @@ func (h *HUD) PushOutcome(phrase string) {
 // describe what is under way whether or not anything is drawing it, and the
 // window hides regardless.
 func (h *HUD) pushDiscoveryState() {
+	h.discovery.pubMu.Lock()
+	defer h.discovery.pubMu.Unlock()
+	h.publishDiscoveryLocked()
+}
+
+// publishDiscoveryLocked is pushDiscoveryState for a caller holding pubMu.
+// It reports whether it published: false means the window is closed and no
+// dictation status is under way, so the channel has nothing to say.
+func (h *HUD) publishDiscoveryLocked() bool {
 	h.discovery.mu.Lock()
 	doc := branchkit.OutputState{
 		Channel:  ChannelDiscovery,
@@ -451,7 +467,7 @@ func (h *HUD) pushDiscoveryState() {
 		transcribingDoc = true
 	} else if !isOpen {
 		h.discovery.mu.Unlock()
-		return
+		return false
 	}
 	if doc.Kind == "" {
 		doc.Kind = branchkit.OutputKindChoices
@@ -462,6 +478,7 @@ func (h *HUD) pushDiscoveryState() {
 	if _, err := h.outputState(branchkit.OutputStateRequest{State: doc}); err != nil {
 		branchkit.Logf("voice", "discovery: output.state failed: %v", err)
 	}
+	return true
 }
 
 // urgencyFor is the producer's claim about how much a document matters:

@@ -382,10 +382,18 @@ func (h *Host) restartCmdRecAfterHold() {
 // still to come, says so on the discovery channel. The session's
 // dictation-finished hook (newHost) ends that when the transcript lands or
 // the drain gives up.
+//
+// The check runs again after the publish: a dictation that finished in
+// between (its transcript or a stale stop landing at once) ran the hook
+// before the flag was set, and nothing else would end it.
 func (h *Host) drainDictation() {
 	h.sess.DrainDictation()
-	if h.sess.GetDictationPipelineState() == session.PipelineDraining {
-		h.hud.SetTranscribing(true)
+	if h.sess.GetDictationPipelineState() != session.PipelineDraining {
+		return
+	}
+	h.hud.SetTranscribing(true)
+	if h.sess.GetDictationPipelineState() != session.PipelineDraining {
+		h.hud.SetTranscribing(false)
 	}
 }
 
