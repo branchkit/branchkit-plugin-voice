@@ -250,7 +250,6 @@ func (c *Corrections) Set(corr []Correction) error {
 }
 
 // LoadFromCollection loads corrections from the collection system.
-// Falls back to migrating from the legacy corrections.json file.
 func (c *Corrections) LoadFromCollection() {
 	rec, err := c.plugin.Get("plugin.voice.corrections", "singleton")
 	if err != nil {
