@@ -225,10 +225,14 @@ func newHost(p *branchkit.Plugin) *Host {
 	h.modeRetryDelays = defaultModeRetryDelays
 	h.modeRetryAfter = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
 	h.hud = hud.New(p, h.renderHUD)
-	// Clear the "transcribing" icon once the transcript lands (or the drain
-	// backstop gives up), re-deriving from the CURRENT mode: a dictation taken
-	// during continuous mode returns to the continuous icon, not to idle.
-	h.sess = session.New(h.hud, h.speech, func() { h.applyModeIcon(h.sess.GetCurrentMode()) })
+	// Clear the "transcribing" icon and document once the transcript lands
+	// (or the drain backstop gives up), re-deriving the icon from the CURRENT
+	// mode: a dictation taken during continuous mode returns to the
+	// continuous icon, not to idle.
+	h.sess = session.New(h.hud, h.speech, func() {
+		h.hud.SetTranscribing(false)
+		h.applyModeIcon(h.sess.GetCurrentMode())
+	})
 	// A dictation that ends without a transcript used to vanish: the pill
 	// went away and nothing was typed, with nothing to say why.
 	h.sess.SetOnDictationLost(func() {

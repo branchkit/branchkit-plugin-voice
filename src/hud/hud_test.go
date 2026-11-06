@@ -115,3 +115,54 @@ func TestLeadDiscoveryPhraseOnlyLeadsChoices(t *testing.T) {
 		t.Errorf("problem phrase changed: %q", phrase)
 	}
 }
+
+// sinkHUD is a test HUD whose discovery documents are recorded in order:
+// "<kind>:<phrase>" for a state, "clear" for a clear.
+func sinkHUD() (*HUD, *[]string) {
+	h := newTestHUD()
+	var got []string
+	h.SetOutputSink(
+		func(req branchkit.OutputStateRequest) (*branchkit.OutputStateResponse, error) {
+			got = append(got, req.State.Kind+":"+req.State.Phrase)
+			return &branchkit.OutputStateResponse{}, nil
+		},
+		func(branchkit.OutputClearRequest) (*branchkit.OutputClearResponse, error) {
+			got = append(got, "clear")
+			return &branchkit.OutputClearResponse{}, nil
+		})
+	return h, &got
+}
+
+// A command hold started while a dictation is transcribing shows its
+// choices; closing it puts transcribing back, and the transcript landing
+// clears it.
+func TestTranscribingYieldsToAnOpenWindowAndReturns(t *testing.T) {
+	h, got := sinkHUD()
+	h.SetTranscribing(true)
+	h.SetTranscribing(true) // said once, not ticked
+	h.OpenDiscovery("Say a command", nil, "no commands", "", 0, OnExpire{})
+	h.CloseDiscovery()
+	h.SetTranscribing(false)
+	want := []string{
+		"progress:Transcribing…",
+		"choices:no commands",
+		"progress:Transcribing…",
+		"clear",
+	}
+	if !reflect.DeepEqual(*got, want) {
+		t.Fatalf("documents = %q, want %q", *got, want)
+	}
+}
+
+// Something published after transcribing (an outcome) is the channel's
+// state; the transcript landing must not clear it away.
+func TestTranscribingEndLeavesALaterDocument(t *testing.T) {
+	h, got := sinkHUD()
+	h.SetTranscribing(true)
+	h.PushOutcome("snap left")
+	h.SetTranscribing(false)
+	want := []string{"progress:Transcribing…", "outcome:snap left"}
+	if !reflect.DeepEqual(*got, want) {
+		t.Fatalf("documents = %q, want %q", *got, want)
+	}
+}

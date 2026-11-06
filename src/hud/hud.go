@@ -49,17 +49,34 @@ type HUD struct {
 	mainMode  string
 	hudOpen   bool
 	discovery *discoveryState
+
+	// Where the discovery channel's documents go: the platform's
+	// output.state and output.clear, a seam so a test can read what was
+	// published (SetOutputSink).
+	outputState func(branchkit.OutputStateRequest) (*branchkit.OutputStateResponse, error)
+	outputClear func(branchkit.OutputClearRequest) (*branchkit.OutputClearResponse, error)
 }
 
 // New wires the settings mirror (must run before plugin.Run()) whose
 // OnChange repaints the main HUD, so an appearance edit from ANY surface —
 // the voice tab, the generic settings form, the import — lands visually.
 func New(p *branchkit.Plugin, render func(req *RenderHUDRequest) (HudResponse, error)) *HUD {
-	h := &HUD{plugin: p, render: render, discovery: &discoveryState{}}
+	h := &HUD{plugin: p, render: render, discovery: &discoveryState{},
+		outputState: p.OutputState, outputClear: p.OutputClear}
 	h.mainMode = "commands"
 	h.config = branchkit.Settings[HudConfig](p, configCollection)
 	h.config.OnChange(func(HudConfig) { h.PushMainHUD() })
 	return h
+}
+
+// SetOutputSink replaces where the discovery channel's documents go. For
+// tests: a HUD on a detached plugin publishes nowhere, so a test that checks
+// what was said installs a recorder here.
+func (h *HUD) SetOutputSink(
+	state func(branchkit.OutputStateRequest) (*branchkit.OutputStateResponse, error),
+	clear func(branchkit.OutputClearRequest) (*branchkit.OutputClearResponse, error),
+) {
+	h.outputState, h.outputClear = state, clear
 }
 
 // IsHudOpen returns whether the main HUD is currently open.

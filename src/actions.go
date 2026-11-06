@@ -227,7 +227,7 @@ func (h *Host) finishDictationSession() {
 	h.dictationStopSound()
 	// The caret is read now, while the transcript is computed, not after it.
 	h.prefetchCaret()
-	h.sess.DrainDictation()
+	h.drainDictation()
 	h.holdEnded()
 	// Audio is done; the transcript is not. That gap is measured at
 	// 0.68 s + 40 ms per second of speech, and the menu bar used to sit on
@@ -378,7 +378,21 @@ func (h *Host) restartCmdRecAfterHold() {
 	}
 }
 
+// drainDictation ends a dictation's recording and, while its transcript is
+// still to come, says so on the discovery channel. The session's
+// dictation-finished hook (newHost) ends that when the transcript lands or
+// the drain gives up.
+func (h *Host) drainDictation() {
+	h.sess.DrainDictation()
+	if h.sess.GetDictationPipelineState() == session.PipelineDraining {
+		h.hud.SetTranscribing(true)
+	}
+}
+
 func (h *Host) enterDictationOverlay() {
+	// A new recording: an earlier dictation's transcript still on its way
+	// is no longer what is under way.
+	h.hud.SetTranscribing(false)
 	h.sess.EnterOverlay("dictation")
 	h.setVoiceMode("dictation")
 	h.hud.CloseDiscovery()
@@ -1380,7 +1394,7 @@ func (h *Host) stopSpeakDictation(cutoffMs *uint64) {
 		return
 	}
 	h.sess.SetSpeakDictating(false)
-	h.sess.DrainDictation()
+	h.drainDictation()
 	h.plugin.CollectionDeleteRecords(branchkit.CollectionDeleteRecordsRequest{Name: "plugin.voice.speaking", Ids: []string{"singleton"}})
 	// The local cutoff is *uint64; the wrapper takes *int. Converting here
 	// rather than widening the wrapper — the untyped map hid this mismatch

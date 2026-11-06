@@ -36,6 +36,15 @@ type discoveryState struct {
 	transcript   string
 	preparing    bool
 	silenceTimer *time.Timer
+
+	// transcribing: a released dictation's audio is being turned into text
+	// (SetTranscribing). It belongs to the dictation, not to the window, so
+	// closing the window leaves it standing. transcribingShown: the last
+	// document published on the channel was the transcribing one, so ending
+	// it clears the channel; anything published since (an outcome, an open
+	// window) is left alone.
+	transcribing      bool
+	transcribingShown bool
 }
 
 // IsDiscoveryOpen returns whether the discovery overlay is open.
@@ -187,12 +196,26 @@ func (h *HUD) CloseDiscovery() {
 	if !h.closeDiscoveryState() {
 		return
 	}
-	// Nothing is true on the channel now: clear the state (every renderer
-	// stops conveying it, generation-stamped) and hide the window.
-	if _, err := h.plugin.OutputClear(branchkit.OutputClearRequest{Channel: ChannelDiscovery}); err != nil {
-		branchkit.Logf("voice", "discovery: output.clear failed: %v", err)
+	h.discovery.mu.Lock()
+	transcribing := h.discovery.transcribing
+	h.discovery.mu.Unlock()
+	if transcribing {
+		// A dictation released before the window opened is still being
+		// transcribed: that is what is true on the channel again.
+		h.pushDiscoveryState()
+	} else {
+		// Nothing is true on the channel now: clear the state (every renderer
+		// stops conveying it, generation-stamped).
+		h.clearDiscoveryState()
 	}
 	h.signalShell("hud:close:discovery")
+}
+
+// clearDiscoveryState says nothing is true on the discovery channel.
+func (h *HUD) clearDiscoveryState() {
+	if _, err := h.outputClear(branchkit.OutputClearRequest{Channel: ChannelDiscovery}); err != nil {
+		branchkit.Logf("voice", "discovery: output.clear failed: %v", err)
+	}
 }
 
 // EndDiscoveryWithOutcome closes discovery at a hold's end when the hold
@@ -242,6 +265,43 @@ func (h *HUD) SetPreparing(preparing bool) {
 	h.discovery.preparing = preparing
 	h.discovery.mu.Unlock()
 	h.pushDiscoveryState()
+}
+
+// SetTranscribing says whether a released dictation is still being turned
+// into text: the gap between letting go of the key and the words landing,
+// about 0.7 s plus 40 ms per second of speech. The pill and the menu-bar
+// icon show it; this is the same fact as a `progress` document, for every
+// renderer that is not a picture (speech, the accessibility element, a
+// plugin on `_platform.output.state`). It is published once, never ticked,
+// so a renderer that speaks hears it once.
+//
+// An open window wins: a command hold started during the gap shows its
+// choices, and closing that window publishes transcribing again. Ending it
+// clears the channel only while the transcribing document is still the
+// channel's state; the transcript itself is typed, not published, and a
+// dictation that comes back with nothing says so as a notice of its own.
+func (h *HUD) SetTranscribing(on bool) {
+	if on && !h.Config().IsChannelEnabled(ChannelDiscovery) {
+		return
+	}
+	h.discovery.mu.Lock()
+	if h.discovery.transcribing == on {
+		h.discovery.mu.Unlock()
+		return
+	}
+	h.discovery.transcribing = on
+	open := h.discovery.isOpen
+	shown := h.discovery.transcribingShown
+	if !on {
+		h.discovery.transcribingShown = false
+	}
+	h.discovery.mu.Unlock()
+	switch {
+	case on && !open:
+		h.pushDiscoveryState()
+	case !on && shown:
+		h.clearDiscoveryState()
+	}
 }
 
 // UpdateTranscript updates the listening indicator and live transcript text.
@@ -318,7 +378,10 @@ func (h *HUD) PushOutcome(phrase string) {
 		Locale:  "en",
 		V:       1,
 	}
-	if _, err := h.plugin.OutputState(branchkit.OutputStateRequest{State: doc}); err != nil {
+	h.discovery.mu.Lock()
+	h.discovery.transcribingShown = false
+	h.discovery.mu.Unlock()
+	if _, err := h.outputState(branchkit.OutputStateRequest{State: doc}); err != nil {
 		branchkit.Logf("voice", "discovery: outcome output.state failed: %v", err)
 	}
 }
@@ -330,8 +393,9 @@ func (h *HUD) PushOutcome(phrase string) {
 // the previous state; it is never appended.
 //
 // While the window is closed only the dictation statuses push (a loading
-// model, a live transcript): they describe what is under way whether or not
-// anything is drawing it, and the window hides regardless.
+// model, a live transcript, a released dictation being transcribed): they
+// describe what is under way whether or not anything is drawing it, and the
+// window hides regardless.
 func (h *HUD) pushDiscoveryState() {
 	h.discovery.mu.Lock()
 	doc := branchkit.OutputState{
@@ -355,6 +419,7 @@ func (h *HUD) pushDiscoveryState() {
 		}
 	}
 	isOpen := h.discovery.isOpen
+	transcribingDoc := false
 	if h.discovery.isListening && h.discovery.transcript != "" {
 		// The live transcript is the whole state while it lasts.
 		doc.Kind = branchkit.OutputKindProgress
@@ -374,6 +439,16 @@ func (h *HUD) pushDiscoveryState() {
 		doc.Sections = nil
 		doc.Footer = nil
 		doc.Progress = nil
+	} else if !isOpen && h.discovery.transcribing {
+		// A released dictation still on its way to text.
+		doc.Kind = branchkit.OutputKindProgress
+		doc.Title = "Dictation"
+		doc.Phrase = "Transcribing…"
+		doc.Urgency = branchkit.OutputUrgencyAmbient
+		doc.Sections = nil
+		doc.Footer = nil
+		doc.Progress = nil
+		transcribingDoc = true
 	} else if !isOpen {
 		h.discovery.mu.Unlock()
 		return
@@ -381,9 +456,10 @@ func (h *HUD) pushDiscoveryState() {
 	if doc.Kind == "" {
 		doc.Kind = branchkit.OutputKindChoices
 	}
+	h.discovery.transcribingShown = transcribingDoc
 	h.discovery.mu.Unlock()
 
-	if _, err := h.plugin.OutputState(branchkit.OutputStateRequest{State: doc}); err != nil {
+	if _, err := h.outputState(branchkit.OutputStateRequest{State: doc}); err != nil {
 		branchkit.Logf("voice", "discovery: output.state failed: %v", err)
 	}
 }
