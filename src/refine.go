@@ -37,7 +37,10 @@ const refineStage = "refine_llm"
 // the round trip.
 const refineMinWords = 4
 
-// refineTimeout bounds the wait. Past it the dictation is typed unrefined.
+// refineTimeout bounds the whole wait, end to end: the call is made with it
+// as its own deadline (not the SDK's 10 s default), so a queue for the stage
+// or a cold start counts against it too, and the stage is asked to answer
+// within it. Past it the dictation is typed unrefined.
 const refineTimeout = 8 * time.Second
 
 const refineInstructions = "You clean up dictated text. Remove filler words (um, uh, like, you know) " +
@@ -239,7 +242,7 @@ func (h *Host) refine(text, profile string, warm bool) (string, string) {
 	}
 	started := time.Now()
 	timeout := int(refineTimeout / time.Millisecond)
-	resp, err := h.plugin.StagesRequest(branchkit.StagesRequestRequest{
+	resp, err := h.callsWithin(refineTimeout).StagesRequest(branchkit.StagesRequestRequest{
 		Stage:     refineStage,
 		Params:    llmStageParams(refineModel),
 		Body:      refineRequestBody(text),

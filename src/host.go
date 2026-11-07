@@ -85,6 +85,10 @@ type Host struct {
 	dictationLimitAfter func(d time.Duration, f func())
 	// calibHoldEnd tells calibration a hold ended (a seam a test watches).
 	calibHoldEnd func()
+	// callsWithin is the typed calls with d as each one's deadline (the
+	// plugin's WithTimeout), in place of the SDK's 10 s default; a seam so a
+	// test can see which bound a call asked for (refine and style).
+	callsWithin func(d time.Duration) branchkit.Methods
 	// The restart budget for command recognition while listening
 	// (cmdrec_recovery.go).
 	cmdRecRecovery cmdRecRecovery
@@ -259,6 +263,7 @@ func newHost(p *branchkit.Plugin) *Host {
 	h.cmdRecRestartAfter = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
 	h.dictationLimitAfter = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
 	h.calibHoldEnd = func() { h.calib.HandleHoldEnd() }
+	h.callsWithin = p.WithTimeout
 	h.holdPause = h.holdPauseDefault
 	h.releasePause = h.releasePauseDefault
 	return h

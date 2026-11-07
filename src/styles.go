@@ -40,8 +40,11 @@ import (
 // styleModel is the artifact styles load (provides.artifacts).
 const styleModel = "qwen3-4b"
 
-// styleTimeout bounds a rewrite. Past it the dictation is typed unstyled.
-const styleTimeout = 15 * time.Second
+// styleTimeout bounds the whole wait for a rewrite, end to end, as
+// refineTimeout does a clean-up: the call's own deadline and the stage's.
+// Past it the dictation is typed unstyled (a selection is left as it was).
+// It was 15 s, which the SDK's 10 s default deadline made unreachable.
+const styleTimeout = 10 * time.Second
 
 const (
 	// styleNone is an app's explicit "no style here", which overrides the
@@ -565,7 +568,7 @@ func (h *Host) styleText(text, style string) (string, bool, string) {
 	}
 	started := time.Now()
 	timeout := int(styleTimeout / time.Millisecond)
-	resp, err := h.plugin.StagesRequest(branchkit.StagesRequestRequest{
+	resp, err := h.callsWithin(styleTimeout).StagesRequest(branchkit.StagesRequestRequest{
 		Stage:     refineStage,
 		Params:    llmStageParams(styleModel),
 		Body:      styleRequestBody(text, st),
