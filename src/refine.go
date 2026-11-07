@@ -189,11 +189,17 @@ func stuttered(words []string, w string) bool {
 
 // refineWork is what a dictation holds that the model could clean: a
 // correction cue, a filler, a stuttered repeat. Counts only, never words, so
-// it can go on the refine log line. With none of them the model has nothing
-// it is allowed to remove (acceptRefinement keeps only those removals), so
-// such a dictation could be typed without waiting for it; the line records
-// that as would_skip, for measuring how many waits a pre-filter would save
-// before one is switched on.
+// it can go on the refine log line. With none of them a speaker said nothing
+// they would want removed, so such a dictation is a candidate to type without
+// waiting; the line records that as would_skip, for measuring how many waits a
+// pre-filter would save before one is switched on.
+//
+// would_skip is not "the model cannot change it": acceptRefinement also lets
+// the model drop a lone "you" or "I" (refineFillers holds them for "you know"
+// and "I mean") and keeps an answer that only changed punctuation. Counting
+// those as work would mark nearly every sentence, so they are left out here,
+// and the outcome= on the same line shows how often the model changed a
+// would_skip text anyway: that is the cost a pre-filter would pay.
 type refineWork struct {
 	Cue    bool // a self-correction cue (hasCorrectionCue)
 	Filler int  // fillers that are never meant: um, uh, hmm ...
