@@ -187,6 +187,60 @@ func stuttered(words []string, w string) bool {
 	return false
 }
 
+// refineWork is what a dictation holds that the model could clean: a
+// correction cue, a filler, a stuttered repeat. Counts only, never words, so
+// it can go on the refine log line. With none of them the model has nothing
+// it is allowed to remove (acceptRefinement keeps only those removals), so
+// such a dictation could be typed without waiting for it; the line records
+// that as would_skip, for measuring how many waits a pre-filter would save
+// before one is switched on.
+type refineWork struct {
+	Cue    bool // a self-correction cue (hasCorrectionCue)
+	Filler int  // fillers that are never meant: um, uh, hmm ...
+	Soft   int  // words that are fillers only sometimes: like, so, well, "you know" ...
+	Repeat int  // a word said twice in a row ("the the")
+}
+
+// refineHardFillers are the fillers no sentence means. refineFillers' other
+// words are ordinary words most of the time ("I", "you", "so"), so they are
+// counted apart (Soft) or, for "I" and "mean", left to the "I mean" cue.
+var refineHardFillers = map[string]bool{
+	"um": true, "uh": true, "erm": true, "er": true, "ah": true, "hmm": true, "mm": true,
+}
+
+// refineSoftFillers are fillers only sometimes. A pre-filter that ignored
+// them would skip a dictation the model could have cleaned, so would_skip
+// counts them as work; Soft keeps them apart so the log shows what ignoring
+// them would change.
+var refineSoftFillers = map[string]bool{
+	"like": true, "so": true, "well": true, "basically": true, "literally": true,
+}
+
+// refineWorkIn measures text for refineWork.
+func refineWorkIn(text string) refineWork {
+	w := refineWork{Cue: hasCorrectionCue(text)}
+	words := refineWords(text)
+	for i, word := range words {
+		switch {
+		case refineHardFillers[word]:
+			w.Filler++
+		case refineSoftFillers[word]:
+			w.Soft++
+		case word == "know" && i > 0 && words[i-1] == "you":
+			w.Soft++
+		}
+		if i > 0 && word == words[i-1] {
+			w.Repeat++
+		}
+	}
+	return w
+}
+
+// wouldSkip reports whether the text has nothing the model may remove.
+func (w refineWork) wouldSkip() bool {
+	return !w.Cue && w.Filler == 0 && w.Soft == 0 && w.Repeat == 0
+}
+
 // refineWords splits text into lower-case words without their punctuation.
 func refineWords(s string) []string {
 	var out []string
@@ -240,6 +294,14 @@ func (h *Host) refine(text, profile string, warm bool) (string, string) {
 		logLLMCall("refine", "", outcomeSkipped, 0, warm, refineAnswer{}, h.traceID())
 		return text, "skipped: " + why
 	}
+	// What the text holds to clean, for the log line: a dictation's only
+	// (warm's text is fixed), never a style call's.
+	var work *refineWork
+	if !warm {
+		w := refineWorkIn(text)
+		work = &w
+	}
+
 	started := time.Now()
 	timeout := int(refineTimeout / time.Millisecond)
 	resp, err := h.callsWithin(refineTimeout).StagesRequest(branchkit.StagesRequestRequest{
@@ -250,26 +312,26 @@ func (h *Host) refine(text, profile string, warm bool) (string, string) {
 	})
 	if err != nil {
 		branchkit.Logf("voice", "refine: %v", err)
-		logLLMCall("refine", "", outcomeError, time.Since(started), warm, refineAnswer{}, h.traceID())
+		logRefineCall(outcomeError, time.Since(started), warm, refineAnswer{}, work, h.traceID())
 		return text, "not refined: " + err.Error()
 	}
 	var answer refineAnswer
 	if err := json.Unmarshal(resp.Body, &answer); err != nil {
-		logLLMCall("refine", "", outcomeError, time.Since(started), warm, refineAnswer{}, h.traceID())
+		logRefineCall(outcomeError, time.Since(started), warm, refineAnswer{}, work, h.traceID())
 		return text, "not refined: unreadable answer"
 	}
 	h.noteRefineUsed()
 	took := time.Since(started).Round(10 * time.Millisecond)
 	if strings.TrimSpace(answer.Text) == strings.TrimSpace(text) {
-		logLLMCall("refine", "", outcomeUnchanged, took, warm, answer, h.traceID())
+		logRefineCall(outcomeUnchanged, took, warm, answer, work, h.traceID())
 		return text, fmt.Sprintf("unchanged by the model (%s)", took)
 	}
 	if ok, why := acceptRefinement(text, answer.Text); !ok {
 		branchkit.Logf("voice", "refine: answer refused: %s", why)
-		logLLMCall("refine", "", outcomeRefused, took, warm, answer, h.traceID())
+		logRefineCall(outcomeRefused, took, warm, answer, work, h.traceID())
 		return text, "model's edit refused: " + why
 	}
-	logLLMCall("refine", "", outcomeAccepted, took, warm, answer, h.traceID())
+	logRefineCall(outcomeAccepted, took, warm, answer, work, h.traceID())
 	return strings.TrimSpace(answer.Text), fmt.Sprintf("cleaned up by the local model (%s)", took)
 }
 
@@ -299,12 +361,18 @@ const (
 // step that did log. The tr= is the dictation transcript's chain, which the
 // platform's stage.request_completed record carries too.
 func logLLMCall(kind, style, outcome string, took time.Duration, warm bool, a refineAnswer, tr string) {
-	branchkit.Log("voice", llmCallLine(kind, style, outcome, took, warm, a, tr))
+	branchkit.Log("voice", llmCallLine(kind, style, outcome, took, warm, a, nil, tr))
+}
+
+// logRefineCall is logLLMCall for a refine call that reached the model, with
+// what its text held to clean (nil for warmRefine's).
+func logRefineCall(outcome string, took time.Duration, warm bool, a refineAnswer, work *refineWork, tr string) {
+	branchkit.Log("voice", llmCallLine("refine", "", outcome, took, warm, a, work, tr))
 }
 
 // llmCallLine is logLLMCall's line. Durations, counts and fixed labels only:
 // never what was said or what the model answered.
-func llmCallLine(kind, style, outcome string, took time.Duration, warm bool, a refineAnswer, tr string) string {
+func llmCallLine(kind, style, outcome string, took time.Duration, warm bool, a refineAnswer, work *refineWork, tr string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: outcome=%s took_ms=%d warm=%t", kind, outcome, took.Milliseconds(), warm)
 	if style != "" {
@@ -313,6 +381,14 @@ func llmCallLine(kind, style, outcome string, took time.Duration, warm bool, a r
 	if a.Device != "" {
 		fmt.Fprintf(&b, " tokens=%d stopped=%s prefill_ms=%d generate_ms=%d device=%s",
 			a.Tokens, a.Stopped, a.PrefillMs, a.GenerateMs, a.Device)
+	}
+	if work != nil {
+		cue := 0
+		if work.Cue {
+			cue = 1
+		}
+		fmt.Fprintf(&b, " would_skip=%t cue=%d filler=%d soft=%d repeat=%d",
+			work.wouldSkip(), cue, work.Filler, work.Soft, work.Repeat)
 	}
 	fmt.Fprintf(&b, " tr=%s", tr)
 	return b.String()

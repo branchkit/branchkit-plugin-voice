@@ -144,16 +144,59 @@ func TestHasCorrectionCue(t *testing.T) {
 // and the stage's token counts, and never the text, so a slow call shows in the log.
 func TestLLMCallLineHoldsTimingsNotText(t *testing.T) {
 	a := refineAnswer{Text: "the secret words", Tokens: 12, Stopped: "end", PrefillMs: 80, GenerateMs: 250, Device: "gpu"}
-	got := llmCallLine("refine", "", outcomeAccepted, 335*time.Millisecond, false, a, "tr_abc")
-	want := "refine: outcome=accepted took_ms=335 warm=false tokens=12 stopped=end prefill_ms=80 generate_ms=250 device=gpu tr=tr_abc"
+	said := "Send the secret plan to Sarah, no, um, to to Priya, so, you know, today."
+	work := refineWorkIn(said)
+	got := llmCallLine("refine", "", outcomeAccepted, 335*time.Millisecond, false, a, &work, "tr_abc")
+	want := "refine: outcome=accepted took_ms=335 warm=false tokens=12 stopped=end prefill_ms=80 generate_ms=250 device=gpu" +
+		" would_skip=false cue=1 filler=1 soft=2 repeat=1 tr=tr_abc"
 	if got != want {
 		t.Fatalf("got  %q\nwant %q", got, want)
 	}
-	if strings.Contains(got, "secret") {
-		t.Fatalf("the answer's text leaked into the log line: %q", got)
+	// Neither the answer nor what was said reaches the line: not a word
+	// of either, including the filler, cue and repeated words counted.
+	for _, w := range append(strings.Fields("the secret words"), refineWords(said)...) {
+		for _, f := range strings.Fields(got) {
+			if _, v, ok := strings.Cut(f, "="); ok && strings.EqualFold(v, w) {
+				t.Fatalf("%q from the text leaked into the log line: %q", w, got)
+			}
+		}
+		if len(w) > 3 && strings.Contains(strings.ToLower(got), w) {
+			t.Fatalf("%q from the text leaked into the log line: %q", w, got)
+		}
 	}
-	warm := llmCallLine("style", "formal", outcomeError, 2*time.Second, true, refineAnswer{}, "-")
+	warm := llmCallLine("style", "formal", outcomeError, 2*time.Second, true, refineAnswer{}, nil, "-")
 	if warm != "style: outcome=error took_ms=2000 warm=true style=formal tr=-" {
 		t.Fatalf("got %q", warm)
+	}
+}
+
+// would_skip on the refine log line: a dictation with no correction cue, no
+// filler and no stuttered repeat has nothing the model may remove.
+func TestRefineWork(t *testing.T) {
+	for _, tt := range []struct {
+		name, text string
+		want       refineWork
+	}{
+		{"a clean sentence", "Open the settings and check the microphone.", refineWork{}},
+		{"a one-word cue set off by commas", "Let's meet on Tuesday, no, Wednesday.", refineWork{Cue: true}},
+		{"a cue word in an ordinary sentence is not a cue", "We should probably wait until Friday.", refineWork{}},
+		{"a multi-word cue", "Send it to Sarah scratch that send it to Priya.", refineWork{Cue: true}},
+		{"I mean is a cue, not two fillers", "Ship it Monday I mean Tuesday please.", refineWork{Cue: true}},
+		{"a filler only", "Ship the build um tomorrow morning.", refineWork{Filler: 1}},
+		{"a soft filler only", "So the build ships tomorrow morning.", refineWork{Soft: 1}},
+		{"you know is a soft filler", "Open the door, you know, and come in.", refineWork{Soft: 1}},
+		{"you alone is not", "Can you open the door for me?", refineWork{}},
+		{"a stutter only", "Ship the the build tomorrow.", refineWork{Repeat: 1}},
+		{"a stutter across punctuation", "Ship it. It ships tomorrow.", refineWork{Repeat: 1}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := refineWorkIn(tt.text)
+			if got != tt.want {
+				t.Errorf("refineWorkIn(%q) = %+v, want %+v", tt.text, got, tt.want)
+			}
+			if skip := got.wouldSkip(); skip != (tt.want == refineWork{}) {
+				t.Errorf("wouldSkip = %v for %+v", skip, got)
+			}
+		})
 	}
 }
