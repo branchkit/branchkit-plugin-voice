@@ -1090,7 +1090,7 @@ func TestOrchestrateNoDiscoveryControlMessage_Cancel(t *testing.T) {
 	s.stubRPC(rpcStubs{})
 	s.mu.Lock()
 	s.tieWords = []string{"play"}
-	s.tieChoices = buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}, {OwnerPlugin: "youtube"}})
+	s.tieChoices = buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}, {OwnerPlugin: "youtube"}}, tieNumberWords)
 	s.mu.Unlock()
 
 	req := orchReq()

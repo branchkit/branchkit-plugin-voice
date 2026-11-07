@@ -3,10 +3,13 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/branchkit/plugin-sdk-go"
+
+	"github.com/branchkit/branchkit-plugin-voice/speech"
 )
 
 // Tie disambiguation — the voice-side consumer of the platform tie signal.
@@ -42,13 +45,32 @@ const (
 // no hold's end clears it. A variable so tests can shorten it.
 var tieCountdown = 8 * time.Second
 
-// tieCodewordPool supplies spoken codewords for tied candidates. Curated to
-// be acoustically distinct and unlikely to collide with real command words.
-// A tie almost always has 2-4 candidates; the pool cycles if a rare tie
-// exceeds its length.
-var tieCodewordPool = []string{
-	"harp", "arch", "drum", "bell", "fern", "kite",
-	"lake", "moon", "nest", "pearl", "quill", "rune",
+// tieNumberWords badge a tie's choices when no alphabet is published (the
+// alphabet is this plugin's own, pushed at boot), or when it has fewer
+// usable words than the tie has candidates.
+var tieNumberWords = []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine"}
+
+// tieDeck is the words a tie's n choices are badged with: the alphabet's
+// codewords (the override-applied view this plugin caches as its
+// phonetics), sorted by word as the platform's own choosers sort them, so
+// a badge means the same word on this card as in every other list the
+// person points into. One word per choice, all the same length: a view
+// never mixes alphabet words with numbers.
+func tieDeck(phonetics []speech.PhoneticEntry, n int) []string {
+	seen := map[string]bool{}
+	var words []string
+	for _, p := range phonetics {
+		w := strings.ToLower(strings.TrimSpace(p.Word))
+		if w != "" && !strings.Contains(w, " ") && !seen[w] {
+			seen[w] = true
+			words = append(words, w)
+		}
+	}
+	if len(words) < n || len(words) == 0 {
+		return tieNumberWords
+	}
+	sort.Strings(words)
+	return words
 }
 
 // TieChoice is one disambiguation option: a spoken codeword (also the
@@ -84,7 +106,7 @@ func (s *State) IsTieActive() bool {
 // commit) go through the platform via the typed Platform surface — the same proven path the
 // browser plugin uses for hint codewords.
 func (s *State) beginTie(tie *tieMatch, mode string) *DiscoveryMutation {
-	choices := buildTieChoices(tie.candidates)
+	choices := buildTieChoices(tie.candidates, tieDeck(s.GetPhonetics(), len(tie.candidates)))
 	if len(choices) == 0 {
 		return nil
 	}
@@ -237,18 +259,31 @@ func (s *State) resolvePreferOwner(words []string, owner string) *resolveRespons
 
 // --- helpers ---
 
-// buildTieChoices assigns a codeword to each tied candidate and derives its
-// spoken aliases (the app name) and HUD label.
-func buildTieChoices(candidates []tiedCandidate) []TieChoice {
+// buildTieChoices assigns each tied candidate a word from deck, in order,
+// and derives its spoken alias (the app name) and HUD label. A tie with
+// more candidates than the deck has words offers the first len(deck): each
+// badge must stand for one candidate, so the deck is never cycled.
+func buildTieChoices(candidates []tiedCandidate, deck []string) []TieChoice {
+	if len(candidates) > len(deck) {
+		branchkit.Logf("voice", "tie: %d candidates, %d badge words — offering the first %d",
+			len(candidates), len(deck), len(deck))
+		candidates = candidates[:len(deck)]
+	}
+	badges := make(map[string]bool, len(candidates))
+	for i := range candidates {
+		badges[deck[i]] = true
+	}
 	choices := make([]TieChoice, 0, len(candidates))
 	for i, c := range candidates {
-		codeword := tieCodewordPool[i%len(tieCodewordPool)]
+		codeword := deck[i]
 		label := c.Label
 		if label == "" {
 			label = c.OwnerPlugin
 		}
+		// An alias that is some choice's badge would capture that badge's
+		// pick for this candidate too: the badge wins.
 		var aliases []string
-		if alias := spokenOwnerAlias(c.OwnerPlugin); alias != "" && alias != codeword {
+		if alias := spokenOwnerAlias(c.OwnerPlugin); alias != "" && !badges[alias] {
 			aliases = []string{alias}
 		}
 		choices = append(choices, TieChoice{

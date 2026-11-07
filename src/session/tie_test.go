@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/branchkit/plugin-sdk-go"
+
+	"github.com/branchkit/branchkit-plugin-voice/speech"
 )
 
 // recordedCall captures one Platform invocation for assertions.
@@ -210,6 +212,42 @@ func TestOrchestrateTieStandsUpChoiceGrammar(t *testing.T) {
 	}
 }
 
+// A surfaced tie badges its card rows and its spoken choices with the
+// alphabet this plugin publishes: the same words as every other list.
+func TestOrchestrateTieBadgesFromTheAlphabet(t *testing.T) {
+	s := newTestState()
+	rec := &tieRecorder{}
+	s.Platform = rec
+	s.SetPhonetics(phoneticsOf("bus", "aim", "car"))
+	s.callResolveFn = func([]string, *string, []string) *resolveResponse {
+		return tieResolveResp("spotify", "youtube")
+	}
+	s.orchestrate(&OrchestrateRequest{Words: []string{"play"}, Mode: "command_hold"})
+
+	card, ok := rec.firstParams(branchkit.MethodOutputState).(branchkit.OutputStateRequest)
+	if !ok {
+		t.Fatalf("expected the chooser card, got %v", rec.methods())
+	}
+	var rows []string
+	for _, it := range card.State.Sections[0].Items {
+		rows = append(rows, it.ID)
+	}
+	if strings.Join(rows, ",") != "aim,bus" {
+		t.Errorf("card rows = %v, want [aim bus]", rows)
+	}
+	put, ok := rec.firstParams(branchkit.MethodCollectionPut).(branchkit.CollectionPutRequest)
+	if !ok || put.Name != collTieChoices {
+		t.Fatalf("expected the choices put first, got %+v", put)
+	}
+	var ids []string
+	for _, e := range put.Entries {
+		ids = append(ids, e.ID)
+	}
+	if strings.Join(ids, ",") != "aim,bus" {
+		t.Errorf("spoken choices = %v, want [aim bus]", ids)
+	}
+}
+
 // ResolveTie tears down the transient grammar, re-resolves with prefer_owner
 // set to the chosen owner, and RETURNS the winner for the platform to
 // execute.
@@ -224,7 +262,7 @@ func TestResolveTieReResolvesWithPreferOwnerAndReturnsTheWinner(t *testing.T) {
 	choices := buildTieChoices([]tiedCandidate{
 		{OwnerPlugin: "spotify", Label: "Play on spotify"},
 		{OwnerPlugin: "youtube", Label: "Play on youtube"},
-	})
+	}, tieNumberWords)
 	s.mu.Lock()
 	s.tieWords = []string{"play"}
 	s.tieChoices = choices
@@ -290,7 +328,7 @@ func TestResolveTieCarriesNoCredentialBecauseItMakesNoClaim(t *testing.T) {
 		}
 		s.Platform = rec
 
-		choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}})
+		choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}}, tieNumberWords)
 		s.mu.Lock()
 		s.tieWords = []string{"play"}
 		s.tieChoices = choices
@@ -313,7 +351,7 @@ func TestResolveTieUnknownTokenReturnsNothing(t *testing.T) {
 		resolveResp: &resolveResponse{Matched: true, Action: pluginAction("x", "")},
 	}
 	s.Platform = rec
-	choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}})
+	choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}}, tieNumberWords)
 	s.mu.Lock()
 	s.tieWords = []string{"play"}
 	s.tieChoices = choices
@@ -344,7 +382,7 @@ func TestOrchestrateDismissDuringTieClears(t *testing.T) {
 	s.callResolveFn = func(words []string, requireTag *string, activeTags []string) *resolveResponse {
 		return &resolveResponse{}
 	}
-	choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}, {OwnerPlugin: "youtube"}})
+	choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}, {OwnerPlugin: "youtube"}}, tieNumberWords)
 	s.mu.Lock()
 	s.tieWords = []string{"play"}
 	s.tieChoices = choices
@@ -368,12 +406,12 @@ func TestBuildTieChoicesAssignsCodewordsAndAliases(t *testing.T) {
 	choices := buildTieChoices([]tiedCandidate{
 		{OwnerPlugin: "spotify", Label: "Play music"},
 		{OwnerPlugin: "you.tube", Label: ""},
-	})
+	}, tieNumberWords)
 	if len(choices) != 2 {
 		t.Fatalf("expected 2 choices, got %d", len(choices))
 	}
-	if choices[0].Codeword != tieCodewordPool[0] || choices[1].Codeword != tieCodewordPool[1] {
-		t.Errorf("codewords should come from the pool in order: %+v", choices)
+	if choices[0].Codeword != tieNumberWords[0] || choices[1].Codeword != tieNumberWords[1] {
+		t.Errorf("codewords should come from the deck in order: %+v", choices)
 	}
 	if len(choices[0].Aliases) != 1 || choices[0].Aliases[0] != "spotify" {
 		t.Errorf("owner name should be a spoken alias, got %v", choices[0].Aliases)
@@ -384,6 +422,72 @@ func TestBuildTieChoicesAssignsCodewordsAndAliases(t *testing.T) {
 	// Non-letter chars in an owner id collapse to spaces in the alias.
 	if len(choices[1].Aliases) != 1 || choices[1].Aliases[0] != "you tube" {
 		t.Errorf("expected sanitized alias 'you tube', got %v", choices[1].Aliases)
+	}
+}
+
+func phoneticsOf(words ...string) []speech.PhoneticEntry {
+	out := make([]speech.PhoneticEntry, len(words))
+	for i, w := range words {
+		letter := byte('a' + i)
+		out[i] = speech.PhoneticEntry{Word: w, Letter: &letter}
+	}
+	return out
+}
+
+// The chooser badges from the alphabet the person points with everywhere
+// else, sorted by word as the platform's choosers sort it, not from a word
+// list of its own.
+func TestTieDeckIsTheAlphabetSortedByWord(t *testing.T) {
+	deck := tieDeck(phoneticsOf("bus", "aim", "Car ", "day", "two words", "aim"), 2)
+	want := []string{"aim", "bus", "car", "day"}
+	if strings.Join(deck, ",") != strings.Join(want, ",") {
+		t.Errorf("deck = %v, want %v (sorted, lowercased, one word each, no repeats)", deck, want)
+	}
+}
+
+// No alphabet published, or one too small for the tie: numbers, never a mix.
+func TestTieDeckFallsBackToNumbers(t *testing.T) {
+	if got := tieDeck(nil, 2); got[0] != "one" {
+		t.Errorf("no alphabet: deck = %v, want the number words", got)
+	}
+	if got := tieDeck(phoneticsOf("aim", "bus"), 3); got[0] != "one" {
+		t.Errorf("alphabet smaller than the tie: deck = %v, want the number words", got)
+	}
+}
+
+func TestBuildTieChoicesBadgesFromTheDeck(t *testing.T) {
+	deck := tieDeck(phoneticsOf("bus", "aim", "car"), 2)
+	choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}, {OwnerPlugin: "youtube"}}, deck)
+	if choices[0].Codeword != "aim" || choices[1].Codeword != "bus" {
+		t.Errorf("badges = %q, %q; want aim, bus", choices[0].Codeword, choices[1].Codeword)
+	}
+	for _, c := range choices {
+		if c.Token != c.Codeword {
+			t.Errorf("token %q must equal its codeword %q: a pick maps back by it", c.Token, c.Codeword)
+		}
+	}
+}
+
+// A badge stands for one candidate: a tie larger than the deck offers the
+// first len(deck), and never cycles a word onto a second candidate.
+func TestBuildTieChoicesNeverReusesABadge(t *testing.T) {
+	choices := buildTieChoices([]tiedCandidate{
+		{OwnerPlugin: "a"}, {OwnerPlugin: "b"}, {OwnerPlugin: "c"},
+	}, []string{"aim", "bus"})
+	if len(choices) != 2 {
+		t.Fatalf("got %d choices, want 2 (the deck's size)", len(choices))
+	}
+	if choices[0].Token == choices[1].Token {
+		t.Errorf("two choices share the badge %q", choices[0].Token)
+	}
+}
+
+// An owner whose spoken name is another choice's badge keeps no alias: the
+// badge must pick its own candidate.
+func TestBuildTieChoicesDropsAnAliasThatIsABadge(t *testing.T) {
+	choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}, {OwnerPlugin: "aim"}}, []string{"aim", "bus"})
+	if len(choices[1].Aliases) != 0 {
+		t.Errorf("alias %v shadows the badge \"aim\"", choices[1].Aliases)
 	}
 }
 
@@ -419,7 +523,7 @@ func TestClearTieTearsDownVocabAndState(t *testing.T) {
 	choices := buildTieChoices([]tiedCandidate{
 		{OwnerPlugin: "spotify", Label: "Play on spotify"},
 		{OwnerPlugin: "youtube", Label: "Play on youtube"},
-	})
+	}, tieNumberWords)
 	s.mu.Lock()
 	s.tieWords = []string{"play"}
 	s.tieChoices = choices
@@ -547,7 +651,7 @@ func TestPickingATieClearsTheGateBeforeReResolving(t *testing.T) {
 		resolveResp: &resolveResponse{Matched: true, Action: pluginAction("spotify.play", "")},
 	}
 	s.Platform = rec
-	choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}, {OwnerPlugin: "youtube"}})
+	choices := buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}, {OwnerPlugin: "youtube"}}, tieNumberWords)
 	s.mu.Lock()
 	s.tieWords = []string{"play"}
 	s.tieChoices = choices
@@ -578,7 +682,7 @@ func TestAnOldCountdownLeavesANewTieAlone(t *testing.T) {
 	s.Platform = &tieRecorder{}
 	s.mu.Lock()
 	s.tieWords = []string{"play"}
-	s.tieChoices = buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}})
+	s.tieChoices = buildTieChoices([]tiedCandidate{{OwnerPlugin: "spotify"}}, tieNumberWords)
 	s.tieGen = 2
 	s.mu.Unlock()
 	old := uint64(1)
