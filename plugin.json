@@ -18,7 +18,8 @@
       "stage.neural_engine",
       "stage.gpu",
       "text.caret",
-      "text.selection"
+      "text.selection",
+      "recognition.bias"
     ],
     "optional_privileges": ["calibration"],
     "capabilities": {
