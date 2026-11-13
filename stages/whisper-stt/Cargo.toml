@@ -27,7 +27,7 @@ hound = { workspace = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.13", features = ["metal"] }
 
-# Windows: ggml's threads run through OpenMP (MSVC's /openmp; its runtime,
+# x64 Windows: ggml's threads run through OpenMP (MSVC's /openmp; its runtime,
 # vcomp140.dll, is part of the Visual C++ runtime the stage already links).
 # Without it ggml uses its own thread pool, whose waits an MSVC build turns
 # into a spin of locked compare-exchanges with no pause instruction (ggml.c's
@@ -35,7 +35,11 @@ whisper-rs = { version = "0.13", features = ["metal"] }
 # node of the graph. On a 6-core ARM64 Windows VM, base.en on a 5 s clip at
 # 4 threads took 39.3 s with ggml's pool and 31.9 s with OpenMP (26.1 s at
 # 6). Linux keeps ggml's pool, which is fast there and needs no runtime.
-# scripts/recipes/build-whisper-stage.py refuses a Windows build without it.
+# scripts/recipes/build-whisper-stage.py refuses an x64 Windows build
+# without it. ARM64 Windows builds ggml with clang-cl instead, whose pool
+# waits properly, and turns OpenMP off there in aarch64-windows-clang.cmake:
+# the feature stays on for every Windows target because cargo cannot tell
+# the compilers apart.
 [target.'cfg(windows)'.dependencies]
 whisper-rs = { version = "0.13", features = ["openmp"] }
 
