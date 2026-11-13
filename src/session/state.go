@@ -1,6 +1,7 @@
 package session
 
 import (
+	"slices"
 	"sync"
 	"time"
 
@@ -166,12 +167,17 @@ type State struct {
 	cmdRecHoldRunEnded bool
 	// cmdRecHoldRun is the run id the platform gave the current hold's
 	// ephemeral command_recognition run in its `started`, or "" before
-	// that `started` has been heard (cleared at each press). While
-	// cmdRecHeldBack is open, a transcript naming it is the hold's own
-	// flush and one naming another run is the persistent run's: decided by
-	// the run, not by whether the hold's `stopped` has been handled, which
-	// the SDK delivers on another goroutine than on_transcript.
+	// that `started` has been heard (cleared at each press).
 	cmdRecHoldRun string
+	// cmdRecHoldRuns is the ids of the most recent holds' ephemeral runs,
+	// newest last, at most cmdRecRunsCap. While cmdRecHeldBack is open, a
+	// transcript naming one of them is a hold's own flush (an earlier
+	// hold's too, after a quick re-press) and one naming another run is the
+	// persistent run's: decided by the run, not by whether the hold's
+	// `stopped` has been handled, which the SDK delivers on another
+	// goroutine than on_transcript. Ids are never reused, so none is
+	// removed on its `stopped`, which could race its own flush.
+	cmdRecHoldRuns []string
 
 	// Tie disambiguation state (set while the user is choosing among tied
 	// commands). tieWords are the words that produced the tie, replayed with
@@ -1063,7 +1069,7 @@ func (s *State) CmdRecHeldBack() <-chan struct{} {
 }
 
 // CmdRecHeldBackFor is CmdRecHeldBack for a transcript of run runID. When
-// both that run and the hold's own run are known, the run decides: the
+// both that run and the hold's own run are known, the run decides: a
 // hold's run is its flush and is not held, and any other is the persistent
 // run started at the release and waits, whatever order the hold's `stopped`
 // was handled in. With either unknown ("" from an ingested transcript, or a
@@ -1076,7 +1082,7 @@ func (s *State) CmdRecHeldBackFor(runID string) <-chan struct{} {
 		return nil
 	}
 	if runID != "" && s.cmdRecHoldRun != "" {
-		if runID == s.cmdRecHoldRun {
+		if slices.Contains(s.cmdRecHoldRuns, runID) {
 			return nil
 		}
 		return s.cmdRecHeldBack
@@ -1093,6 +1099,10 @@ func (s *State) NoteCmdRecHoldRun(runID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cmdRecHoldRun = runID
+	s.cmdRecHoldRuns = append(s.cmdRecHoldRuns, runID)
+	if len(s.cmdRecHoldRuns) > cmdRecRunsCap {
+		s.cmdRecHoldRuns = s.cmdRecHoldRuns[len(s.cmdRecHoldRuns)-cmdRecRunsCap:]
+	}
 }
 
 // OpenCmdRecHeldBack lets the held-back transcripts go on: the hold's

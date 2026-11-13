@@ -162,3 +162,31 @@ func TestCmdRecReturnedAtRelease(t *testing.T) {
 		t.Fatal("released under a dictation, the run must stay down")
 	}
 }
+
+// After a quick re-press, the first hold's run can still be ending when the
+// second is released: its late flush names a hold's run and is not held
+// back with the persistent run's speech.
+func TestAnEarlierHoldsFlushIsNotHeldBack(t *testing.T) {
+	s := newTestState()
+	s.SetCurrentMode("continuous_sleeping")
+	s.SetCmdRecActive()
+	for _, run := range []string{"hold-1", "hold-2"} {
+		s.StartCommandHold()
+		s.SetCmdRecAsideForHold()
+		s.NoteCmdRecStarted(true)
+		s.NoteCmdRecHoldRun(run)
+		s.EndCommandHold()
+		s.BeginCommandHoldDrain(time.Hour, func() {})
+	}
+	if !s.ReturnCmdRecAtRelease() {
+		t.Fatal("the release must start the persistent run again")
+	}
+	for _, run := range []string{"hold-1", "hold-2"} {
+		if s.CmdRecHeldBackFor(run) != nil {
+			t.Fatalf("%s's flush would be held back", run)
+		}
+	}
+	if s.CmdRecHeldBackFor("persistent-3") == nil {
+		t.Fatal("the persistent run's speech after the release must wait")
+	}
+}
