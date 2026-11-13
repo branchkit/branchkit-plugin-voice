@@ -15,7 +15,7 @@ build root.
 | `vad-gate` | `vad_gate` | Rust (Silero VAD) | `vad_gate`, `silero` | `audio_start` / `audio_chunk` / `audio_stop` per detected speech segment, `flow_credit` | macOS, Linux (the Windows build skips it); declared by voice, no seeded pipeline uses it |
 | `sherpa-commands` | `sherpa_commands` | Rust (sherpa-onnx, NeMo CTC) | `command_recognition`, `sherpa` | `transcript`, `flow_credit` | all |
 | `whisper-stt` | `whisper_stage` | Rust (whisper.cpp) | `stt`, `whisper` | `transcript`, `flow_credit` | Linux, Windows (Metal backend if built on macOS) |
-| `whisperkit-stt` | `whisperkit_stage` | Swift (WhisperKit, CoreML) | `stt`, `whisperkit-stt` | `transcript`; accepts `ext.branchkit.dictation_bias` config | macOS |
+| `whisperkit-stt` | `whisperkit_stage` (deployed as `bk.voice.whisperkit_stt`) | Swift (WhisperKit, CoreML) | `stt`, `whisperkit-stt` | `transcript`; accepts `ext.branchkit.dictation_bias` config | macOS |
 | `refine-llm` | `refine_llm` | Rust (llama.cpp, CPU) | `request`, `llama` | one answer per request: dictated text refined by a local language model | all |
 
 The pipelines voice seeds name them: `command_recognition` (mic, then

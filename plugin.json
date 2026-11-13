@@ -563,7 +563,7 @@
         "resources": {
           "memory_mb": 4096
         },
-        "binary": "whisperkit_stage",
+        "binary": "bk.voice.whisperkit_stt",
         "platform": "macos"
       },
       "refine_llm": {

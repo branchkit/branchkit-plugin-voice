@@ -17,6 +17,7 @@ assets/**/*.onnx
 assets/**/*.bin
 assets/**/*.tar.*
 /whisperkit_stage
+/bk.voice.whisperkit_stt
 /whisper_stage
 /refine_llm
 
