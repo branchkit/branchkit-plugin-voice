@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -32,11 +33,15 @@ type pipelineSim struct {
 	persistentRuns int
 	// refuseEphemeral answers an ephemeral run with started:false.
 	refuseEphemeral bool
+	// runs counts command_recognition runs started, for their ids.
+	runs int
 }
 
 type simRun struct {
 	ephemeral bool
 	reason    string
+	// id is the run id the platform names the run by.
+	id string
 }
 
 func simulatePipelines(t *testing.T, h *Host) *pipelineSim {
@@ -83,12 +88,14 @@ func (p *pipelineSim) run(req branchkit.PipelinesRunRequest) (*branchkit.Pipelin
 		return &branchkit.PipelinesRunResponse{Started: true}, nil
 	}
 	p.calls = append(p.calls, "run command_recognition "+kind)
-	p.live = &simRun{ephemeral: eph}
+	p.runs++
+	p.live = &simRun{ephemeral: eph, id: fmt.Sprintf("run-%d", p.runs)}
+	id := p.live.id
 	if !eph {
 		p.persistentRuns++
 	}
 	p.mu.Unlock()
-	p.h.sess.NoteCmdRecStarted(eph)
+	p.h.handleCmdRecStarted(eph, id)
 	return &branchkit.PipelinesRunResponse{Started: true}, nil
 }
 

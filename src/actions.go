@@ -347,12 +347,13 @@ func (h *Host) returnCmdRecAtRelease() {
 // the transcript is then resolved in whatever mode voice is in.
 const heldBackLimit = commandHoldDrainBackstop + time.Second
 
-// awaitHoldCleanup holds a persistent-run transcript that arrived after a
-// released hold's run ended but before the hold's cleanup restored the base
-// mode, so it is resolved in that mode. The platform answers one transcript
+// awaitHoldCleanup holds a persistent-run transcript (run runID) that
+// arrived after a hold's release but before the hold's cleanup restored the
+// base mode, so it is resolved in that mode; the hold's own flush, named by
+// its run, goes on. The platform answers one transcript
 // of a run at a time, so held transcripts are resolved in the order spoken.
-func (h *Host) awaitHoldCleanup() {
-	gate := h.sess.CmdRecHeldBack()
+func (h *Host) awaitHoldCleanup(runID string) {
+	gate := h.sess.CmdRecHeldBackFor(runID)
 	if gate == nil {
 		return
 	}
@@ -362,6 +363,16 @@ func (h *Host) awaitHoldCleanup() {
 	case <-time.After(heldBackLimit):
 		branchkit.Logf("voice", "on_transcript: the released hold's cleanup did not run within %s; resolving now tr=%s",
 			heldBackLimit, h.traceID())
+	}
+}
+
+// handleCmdRecStarted notes a command_recognition run's `started`: which
+// kind it is, and for a hold's ephemeral run its id, which tells the hold's
+// flush from the persistent run's speech after the release.
+func (h *Host) handleCmdRecStarted(ephemeral bool, runID string) {
+	h.sess.NoteCmdRecStarted(ephemeral)
+	if ephemeral && runID != "" {
+		h.sess.NoteCmdRecHoldRun(runID)
 	}
 }
 
@@ -1163,7 +1174,11 @@ func (h *Host) handleOnTranscript(req *branchkit.OnTranscriptRequest) (any, erro
 
 	// Speech right after an Option+G release, heard by the persistent run
 	// started at the release: resolved once the base mode is back.
-	h.awaitHoldCleanup()
+	runID := ""
+	if req.RunID != nil {
+		runID = *req.RunID
+	}
+	h.awaitHoldCleanup(runID)
 
 	if h.sess.DropsCommandTranscripts() {
 		branchkit.Logf("voice", "on_transcript: %d words → dropped (command_recognition suppressed) tr=%s",

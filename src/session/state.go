@@ -164,6 +164,14 @@ type State struct {
 	// started at the release hears nothing until the hold's run has ended;
 	// so from here until the cleanup, a transcript is the persistent run's.
 	cmdRecHoldRunEnded bool
+	// cmdRecHoldRun is the run id the platform gave the current hold's
+	// ephemeral command_recognition run in its `started`, or "" before
+	// that `started` has been heard (cleared at each press). While
+	// cmdRecHeldBack is open, a transcript naming it is the hold's own
+	// flush and one naming another run is the persistent run's: decided by
+	// the run, not by whether the hold's `stopped` has been handled, which
+	// the SDK delivers on another goroutine than on_transcript.
+	cmdRecHoldRun string
 
 	// Tie disambiguation state (set while the user is choosing among tied
 	// commands). tieWords are the words that produced the tie, replayed with
@@ -927,6 +935,8 @@ func (s *State) StartCommandHold() (prevDrainPending, ownsPipeline bool) {
 	// run (its generation is gone), so the persistent run's held-back
 	// transcripts go on now, under this hold.
 	s.openCmdRecHeldBackLocked()
+	// This hold's run is not known until its `started` arrives.
+	s.cmdRecHoldRun = ""
 	ownsPipeline = true
 	s.cmdHoldDrainAwait = 0
 	s.cmdHoldActive = true
@@ -1049,12 +1059,40 @@ func (s *State) ReturnCmdRecAtRelease() (restart bool) {
 // A transcript arriving before the hold's run has said `stopped` is the
 // hold's own (its end-of-hold flush) and is not held.
 func (s *State) CmdRecHeldBack() <-chan struct{} {
+	return s.CmdRecHeldBackFor("")
+}
+
+// CmdRecHeldBackFor is CmdRecHeldBack for a transcript of run runID. When
+// both that run and the hold's own run are known, the run decides: the
+// hold's run is its flush and is not held, and any other is the persistent
+// run started at the release and waits, whatever order the hold's `stopped`
+// was handled in. With either unknown ("" from an ingested transcript, or a
+// hold whose `started` was not heard), it falls back to CmdRecHeldBack's
+// rule.
+func (s *State) CmdRecHeldBackFor(runID string) <-chan struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.cmdRecHeldBack == nil || !s.cmdRecHoldRunEnded {
+	if s.cmdRecHeldBack == nil {
+		return nil
+	}
+	if runID != "" && s.cmdRecHoldRun != "" {
+		if runID == s.cmdRecHoldRun {
+			return nil
+		}
+		return s.cmdRecHeldBack
+	}
+	if !s.cmdRecHoldRunEnded {
 		return nil
 	}
 	return s.cmdRecHeldBack
+}
+
+// NoteCmdRecHoldRun records the run id of a hold's ephemeral
+// command_recognition run, from its `started`.
+func (s *State) NoteCmdRecHoldRun(runID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cmdRecHoldRun = runID
 }
 
 // OpenCmdRecHeldBack lets the held-back transcripts go on: the hold's

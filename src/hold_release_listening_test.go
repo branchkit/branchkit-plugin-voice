@@ -19,9 +19,19 @@ import (
 // actions voice answered it with.
 func heldSay(t *testing.T, h *Host, text string) <-chan []branchkit.Action {
 	t.Helper()
+	return heldSayRun(t, h, text, "")
+}
+
+// heldSayRun is heldSay for a transcript of run runID ("" names no run).
+func heldSayRun(t *testing.T, h *Host, text, runID string) <-chan []branchkit.Action {
+	t.Helper()
+	req := &branchkit.OnTranscriptRequest{Pipeline: "command_recognition", Text: text}
+	if runID != "" {
+		req.RunID = &runID
+	}
 	out := make(chan []branchkit.Action, 1)
 	go func() {
-		resp, err := h.handleOnTranscript(&branchkit.OnTranscriptRequest{Pipeline: "command_recognition", Text: text})
+		resp, err := h.handleOnTranscript(req)
 		if err != nil {
 			t.Errorf("handleOnTranscript: %v", err)
 			out <- nil
@@ -159,6 +169,37 @@ func TestHoldsFlushIsNotHeldBack(t *testing.T) {
 	}
 	p.deliverStopped()
 	wantMode(t, h, "continuous_sleeping")
+}
+
+// The SDK hands voice the hold's `stopped` and the persistent run's
+// transcripts on different goroutines, so speech after the release can
+// arrive before that `stopped` is handled. The run each names decides:
+// the persistent run's waits for the cleanup, the hold's flush does not.
+func TestRunIDTellsSpeechAfterReleaseFromTheFlush(t *testing.T) {
+	h, p, _ := listeningHost(t)
+	releasedHold(t, h, p)
+	p.mu.Lock()
+	holdRun, persistentRun := p.stopping[0].id, p.live.id
+	p.mu.Unlock()
+
+	// Before the hold's `stopped`: the persistent run's words wait.
+	after := heldSayRun(t, h, "snap left", persistentRun)
+	wantWaiting(t, after)
+	// The hold's flush, in the same moment, is the hold's command.
+	flush := heldSayRun(t, h, "close tab", holdRun)
+	if a := answered(t, flush); len(a) != 1 {
+		t.Fatalf("the hold's flush: %d actions, want 1", len(a))
+	}
+	wantWaiting(t, after)
+
+	p.deliverStopped()
+	if a := answered(t, after); len(a) != 0 {
+		t.Fatalf("speech after the release ran as a command while asleep: %#v", a)
+	}
+	wantMode(t, h, "continuous_sleeping")
+	if gate := h.sess.CmdRecHeldBackFor(persistentRun); gate != nil {
+		t.Fatal("the persistent run is still held back after the cleanup")
+	}
 }
 
 // A re-press while the last release's transcripts wait: that hold's cleanup

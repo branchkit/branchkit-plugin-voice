@@ -461,7 +461,11 @@ func main() {
 	// continuous listening's persistent one (cmdrec_recovery.go).
 	h.plugin.OnPipelineStarted(func(payload branchkit.PipelineStartedEventParams) {
 		if payload.Pipeline == "command_recognition" {
-			h.sess.NoteCmdRecStarted(payload.Ephemeral != nil && *payload.Ephemeral)
+			runID := ""
+			if payload.RunID != nil {
+				runID = *payload.RunID
+			}
+			h.handleCmdRecStarted(payload.Ephemeral != nil && *payload.Ephemeral, runID)
 		}
 	})
 
