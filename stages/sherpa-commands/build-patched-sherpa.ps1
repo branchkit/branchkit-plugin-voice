@@ -144,7 +144,14 @@ function Get-VsGenerator {
 $vsGenerator = Get-VsGenerator
 Write-Host "build-patched-sherpa: generator '$vsGenerator' -A $vsPlatform"
 $GEN_ARGS = @('-G', $vsGenerator, '-A', $vsPlatform)
-$cfg_sha = Get-StringSha256 (($CMAKE_ARGS + $GEN_ARGS) -join "`n")
+# MSVC 19.52 rejects espeak-ng's `#if __has_include_next(...)`; the header
+# answers "not found" for it (see the header). Through CFLAGS/CXXFLAGS, which
+# CMake adds to its default flags on the first configure, not CMAKE_C_FLAGS,
+# which would replace them. Its text joins the config hash.
+$COMPAT_H = Join-Path $PSScriptRoot 'msvc-has-include-next.h'
+$env:CFLAGS = (("/FI`"$COMPAT_H`"", $env:CFLAGS) | Where-Object { $_ }) -join ' '
+$env:CXXFLAGS = (("/FI`"$COMPAT_H`"", $env:CXXFLAGS) | Where-Object { $_ }) -join ' '
+$cfg_sha = Get-StringSha256 ((($CMAKE_ARGS + $GEN_ARGS) -join "`n") + "`n" + (Get-Content -Raw -LiteralPath $COMPAT_H))
 $want = "$SHERPA_VERSION $patch_sha $cfg_sha"
 
 if ((Test-Path -LiteralPath $STAMP) -and ((Get-Content -Raw -LiteralPath $STAMP).Trim() -eq $want) `
