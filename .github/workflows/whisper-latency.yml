@@ -27,6 +27,11 @@ on:
       windows_llvm:
         description: An LLVM release whose libclang generates whisper.cpp's bindings on Windows, e.g. 18.1.8 (empty = the runner's own)
         default: ''
+      windows_compiler:
+        description: The compiler that builds whisper.cpp on Windows (clang-cl goes through Ninja, with ggml's own thread pool)
+        type: choice
+        options: [msvc, clang-cl]
+        default: msvc
 
 permissions:
   contents: read
@@ -88,18 +93,39 @@ jobs:
       # FMA, F16C, nothing newer), not the runner's own, so the numbers are
       # the shipped binary's. The file writes the compile options ggml got
       # into the cmake build folder; they go to the log and the summary.
+      #
+      # windows_compiler clang-cl builds whisper.cpp with the runner's
+      # clang-cl through Ninja instead of MSVC: CC/CXX make the cc crate hand
+      # cmake clang-cl with the MSVC environment, and Ninja keeps cmake from
+      # passing a Visual Studio toolset. -EHsc in the dash form: a slash form
+      # in an environment variable is rewritten into a path by Git-Bash.
       - name: Build whisper_stage
         shell: bash
+        env:
+          WINDOWS_COMPILER: ${{ inputs.windows_compiler }}
         run: |
           echo "LIBCLANG_PATH=${LIBCLANG_PATH:-unset (the runner default)}; $(clang --version | head -1)"
           if [ "$RUNNER_ARCH" = X64 ]; then
             export CMAKE_PROJECT_INCLUDE="$(pwd -W 2>/dev/null || pwd)/stages/whisper-stt/x86-64-baseline.cmake"
             echo "CMAKE_PROJECT_INCLUDE=$CMAKE_PROJECT_INCLUDE"
           fi
+          compiler="the image's default"
+          if [ "$RUNNER_OS" = Windows ]; then
+            compiler=msvc
+            if [ "$WINDOWS_COMPILER" = clang-cl ]; then
+              for tool in clang-cl ninja; do
+                command -v "$tool" || { echo "::error::no $tool on PATH"; exit 1; }
+              done
+              export CC_x86_64_pc_windows_msvc=clang-cl CXX_x86_64_pc_windows_msvc=clang-cl
+              export CXXFLAGS_x86_64_pc_windows_msvc=-EHsc CMAKE_GENERATOR_x86_64_pc_windows_msvc=Ninja
+              compiler="clang-cl ($(clang-cl --version | head -1))"
+            fi
+          fi
+          echo "whisper.cpp compiler: $compiler"
           cargo build --locked --release --manifest-path stages/Cargo.toml -p whisper-stt
           flags=$(find stages/target/release/build -name bk-ggml-arch-flags.txt -exec cat {} + 2>/dev/null)
           echo "ggml compile options: ${flags:-(not written: no baseline file in this build)}"
-          echo "ggml compile options on ${{ runner.os }}: \`${flags:-none recorded}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "ggml compile options on ${{ runner.os }} ($compiler): \`${flags:-none recorded}\`" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/download-artifact@v4
         with:
           name: clips

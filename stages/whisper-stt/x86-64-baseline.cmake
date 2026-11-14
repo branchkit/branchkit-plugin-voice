@@ -32,6 +32,19 @@ foreach(flag GGML_AVX512 GGML_AVX512_VBMI GGML_AVX512_VNNI GGML_AVX512_BF16
     set(${flag} OFF CACHE BOOL "x86-64 baseline (x86-64-baseline.cmake)" FORCE)
 endforeach()
 
+# clang-cl on Windows. ggml takes its MSVC branch for it (MSVC is set) and
+# passes only /arch:AVX2, then ggml-cpu-impl.h defines __FMA__ and __F16C__
+# for any _MSC_VER compiler with AVX2. MSVC accepts the FMA and F16C
+# intrinsics under /arch:AVX2; clang refuses them unless the target has the
+# feature, so the features are stated. Its OpenMP would be LLVM's libomp,
+# which whisper-rs-sys does not link (it relies on MSVC's /openmp pulling in
+# vcomp), so ggml uses its own thread pool, which under clang waits with
+# real atomics and a pause (the MSVC build's spin is why it uses OpenMP).
+if(MSVC AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    add_compile_options("/clang:-mavx2" "/clang:-mfma" "/clang:-mf16c")
+    set(GGML_OPENMP OFF CACHE BOOL "x86-64-baseline.cmake: ggml's own pool under clang-cl" FORCE)
+endif()
+
 # Once, at the end of the top-level configure: the compile options ggml's
 # sources get (ARCH_FLAGS lands in ggml/src's COMPILE_OPTIONS).
 if(NOT BK_X86_BASELINE_REPORT_DEFERRED
