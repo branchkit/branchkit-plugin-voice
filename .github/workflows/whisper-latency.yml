@@ -28,10 +28,10 @@ on:
         description: An LLVM release whose libclang generates whisper.cpp's bindings on Windows, e.g. 18.1.8 (empty = the runner's own)
         default: ''
       windows_compiler:
-        description: The compiler that builds whisper.cpp on Windows (clang-cl goes through Ninja, with ggml's own thread pool)
+        description: The compiler that builds whisper.cpp on Windows (clang-cl, as the app's release does, through Ninja with ggml's own thread pool; msvc with OpenMP for comparison)
         type: choice
-        options: [msvc, clang-cl]
-        default: msvc
+        options: [clang-cl, msvc]
+        default: clang-cl
 
 permissions:
   contents: read
