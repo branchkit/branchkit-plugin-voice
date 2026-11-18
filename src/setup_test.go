@@ -105,6 +105,28 @@ func TestKeyCapsUseThisOSWords(t *testing.T) {
 	}
 }
 
+// The Models tab tells the person which key to hold ("Hold … and read").
+// It used to print the raw chord, "opt+t", on every OS.
+func TestHoldKeyLabelIsInThisOSWords(t *testing.T) {
+	for _, c := range []struct{ chord, goos, want string }{
+		{"opt+t", "darwin", "⌥T"},
+		{"opt+t", "linux", "Alt+T"},
+		{"opt+g", "windows", "Alt+G"},
+	} {
+		if got := keyNameOn(c.chord, c.goos); got != c.want {
+			t.Errorf("%s on %s: got %q, want %q", c.chord, c.goos, got, c.want)
+		}
+	}
+	// The default when nothing is bound, and the binding when one is.
+	if got := holdKeyLabel(nil, "voice.dictation", "opt+t"); got != keyName("opt+t") || got == "opt+t" {
+		t.Errorf("default: got %q", got)
+	}
+	table := json.RawMessage(`{"entries":[{"source":"keyboard","trigger":"ctrl+d DOWN","action":"voice.dictation"}]}`)
+	if got := holdKeyLabel(table, "voice.dictation", "opt+t"); got != keyName("ctrl+d") {
+		t.Errorf("bound: got %q, want %q", got, keyName("ctrl+d"))
+	}
+}
+
 func TestActiveKeyReadsTheBindingTable(t *testing.T) {
 	table := json.RawMessage(`{"entries":[
 		{"source":"keyboard","trigger":"ctrl+d DOWN","action":"voice.dictation"},

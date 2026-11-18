@@ -41,21 +41,14 @@ func (h *Host) renderModels(dl *ModelDownloadData, active json.RawMessage) strin
 			helpers = append(helpers, m)
 		}
 	}
-	dictKey := activeKey(active, "voice.dictation")
-	if dictKey == "" {
-		dictKey = "opt+t"
-	}
-	data.DictationCompare = h.dictationCompareView(dictKey)
+	data.DictationCompare = h.dictationCompareView(holdKeyLabel(active, "voice.dictation", "opt+t"))
 	scoreDictationCards(data.Dictation, h.dictationCompareSnapshot().Report)
 	data.Helpers = dictationCards(helpers, onDisk, "", h.modelRef)
 	for i := range data.Helpers {
 		data.Helpers[i].Label = helperLabels[data.Helpers[i].Name]
 	}
 	armed, pending, sayErr := h.sayNow.snapshot(time.Now())
-	key := activeKey(active, "voice.command")
-	if key == "" {
-		key = "opt+g"
-	}
+	key := holdKeyLabel(active, "voice.command", "opt+g")
 	var downloaded []commandModel
 	for _, m := range commandModels {
 		if _, ok := onDisk[m.Name]; ok {

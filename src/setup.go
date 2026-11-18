@@ -421,14 +421,29 @@ func activeKey(active json.RawMessage, action string) string {
 	return ""
 }
 
-// keyName is a default chord written out in this OS's words, for prose:
-// "⌥T" on macOS, "Alt+T" elsewhere.
-func keyName(chord string) string {
+// keyName is a chord written out in this OS's words, for prose: "⌥T" on
+// macOS, "Alt+T" elsewhere.
+func keyName(chord string) string { return keyNameOn(chord, runtime.GOOS) }
+
+// keyNameOn is keyName for a named OS.
+func keyNameOn(chord, goos string) string {
 	sep := "+"
-	if runtime.GOOS == "darwin" {
+	if goos == "darwin" {
 		sep = ""
 	}
-	return strings.Join(keyCaps(chord, runtime.GOOS), sep)
+	return strings.Join(keyCaps(chord, goos), sep)
+}
+
+// holdKeyLabel is the chord bound to action (fallback when none is), in
+// this OS's words. A sentence that tells the person which key to hold says
+// it this way, never as the raw chord: "opt+t" names no key on a Windows
+// or Linux keyboard.
+func holdKeyLabel(active json.RawMessage, action, fallback string) string {
+	chord := activeKey(active, action)
+	if chord == "" {
+		chord = fallback
+	}
+	return keyName(chord)
 }
 
 // keyCaps renders a chord in this OS's own words: glyphs on macOS, names

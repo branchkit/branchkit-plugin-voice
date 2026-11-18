@@ -83,8 +83,8 @@ func TestModelsTabListsDictationModels(t *testing.T) {
 // said just now shows each model's hearing and offers them as answers, a
 // typed answer and Discard.
 func TestModelsTabSayNow(t *testing.T) {
-	html := renderModels(t, ModelsViewData{SayNow: SayNowView{Armed: true, Key: "opt+g"}})
-	if !strings.Contains(html, "Hold opt+g and say one command: it won") || !strings.Contains(html, "say_now/stop") {
+	html := renderModels(t, ModelsViewData{SayNow: SayNowView{Armed: true, Key: "Alt+G"}})
+	if !strings.Contains(html, "Hold Alt+G and say one command: it won") || !strings.Contains(html, "say_now/stop") {
 		t.Errorf("armed: %s", html)
 	}
 	html = renderModels(t, ModelsViewData{SayNow: SayNowView{
@@ -103,8 +103,8 @@ func TestModelsTabSayNow(t *testing.T) {
 // recording waits with Keep and Misread; once compared, the differing
 // sentences show each model's text and its word errors.
 func TestModelsTabDictationCompare(t *testing.T) {
-	armed := renderModels(t, ModelsViewData{Dictation: []ModelCard{{Name: "large"}}, DictationCompare: DictationCompareView{Armed: true, Key: "opt+t", Sentence: "Hello there."}})
-	if !strings.Contains(armed, "Hold opt+t and read: “Hello there.” It won") || !strings.Contains(armed, "read_sentence/stop") {
+	armed := renderModels(t, ModelsViewData{Dictation: []ModelCard{{Name: "large"}}, DictationCompare: DictationCompareView{Armed: true, Key: "Alt+T", Sentence: "Hello there."}})
+	if !strings.Contains(armed, "Hold Alt+T and read: “Hello there.” It won") || !strings.Contains(armed, "read_sentence/stop") {
 		t.Errorf("armed: %s", armed)
 	}
 	html := renderModels(t, ModelsViewData{
