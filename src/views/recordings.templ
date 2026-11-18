@@ -67,6 +67,7 @@ templ Recordings(data RecordingsViewData) {
 					<div class="cal-rec-bias-manual" title="The never-standalone penalty — lowers the recognizer's preference for words that can only ever appear mid-command, so a command word wins genuinely close calls. A few points (2–8) tip close calls; large values can override clear matches. Score bias all measures your clips and recommends a strength below.">
 						<span class="cal-rec-bias-manual__label">Recognition bias</span>
 						<bk-toggle
+							aria-label="Recognition bias"
 							if data.BiasEnabled {
 								checked
 							}

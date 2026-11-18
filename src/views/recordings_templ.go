@@ -241,7 +241,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"cal-rec-bias-manual\" title=\"The never-standalone penalty — lowers the recognizer's preference for words that can only ever appear mid-command, so a command word wins genuinely close calls. A few points (2–8) tip close calls; large values can override clear matches. Score bias all measures your clips and recommends a strength below.\"><span class=\"cal-rec-bias-manual__label\">Recognition bias</span> <bk-toggle")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div class=\"cal-rec-bias-manual\" title=\"The never-standalone penalty — lowers the recognizer's preference for words that can only ever appear mid-command, so a command word wins genuinely close calls. A few points (2–8) tip close calls; large values can override clear matches. Score bias all measures your clips and recommends a strength below.\"><span class=\"cal-rec-bias-manual__label\">Recognition bias</span> <bk-toggle aria-label=\"Recognition bias\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -258,7 +258,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs("@post('" + branchkit.MethodURL("set_bias") + "', {payload: {enabled: evt.detail.checked}})")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 73, Col: 116}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 74, Col: 116}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
@@ -271,7 +271,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(data.BiasStrength)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 80, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 81, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
@@ -294,7 +294,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs("@post('" + branchkit.MethodURL("set_bias") + "', {payload: {strength: parseFloat(el.value)}})")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 85, Col: 119}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 86, Col: 119}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
@@ -308,7 +308,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 					var templ_7745c5c3_Var15 string
 					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(data.BiasStrength)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 89, Col: 27}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 90, Col: 27}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 					if templ_7745c5c3_Err != nil {
@@ -327,7 +327,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(data.BiasProvenance)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 94, Col: 67}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 95, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -345,7 +345,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 					var templ_7745c5c3_Var17 string
 					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(data.BiasRecommendLabel)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 98, Col: 235}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 99, Col: 235}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 					if templ_7745c5c3_Err != nil {
@@ -364,7 +364,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 							var templ_7745c5c3_Var18 string
 							templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("@post('"+branchkit.MethodURL("apply_bias")+"', {payload: {strength: %s, force: true}})", data.BiasRecommendStrength))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 103, Col: 159}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 104, Col: 159}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 							if templ_7745c5c3_Err != nil {
@@ -382,7 +382,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 							var templ_7745c5c3_Var19 string
 							templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("@post('"+branchkit.MethodURL("apply_bias")+"', {payload: {strength: %s}})", data.BiasRecommendStrength))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 108, Col: 146}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 109, Col: 146}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 							if templ_7745c5c3_Err != nil {
@@ -402,7 +402,7 @@ func Recordings(data RecordingsViewData) templ.Component {
 						var templ_7745c5c3_Var20 string
 						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(data.BiasApplyStatus)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 113, Col: 75}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `views/recordings.templ`, Line: 114, Col: 75}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 						if templ_7745c5c3_Err != nil {
