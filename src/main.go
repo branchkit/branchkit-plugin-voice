@@ -408,6 +408,8 @@ func main() {
 	// Put the chosen microphone back on the pipeline records before anything
 	// runs them: the platform re-seeds them from plugin.json on every start.
 	h.applyInputDevice(false)
+	// Before the warmup starts the command stage from its record.
+	h.reconcileOrphanedCapture()
 
 	h.startVoiceWarmup()
 	// Recordings a Say a phrase session left unanswered before a restart.

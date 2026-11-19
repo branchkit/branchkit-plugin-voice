@@ -364,27 +364,76 @@ func (h *Host) patchCommandCaptureDir(dir string) bool {
 		branchkit.Logf("voice", "capture: parse record: %v", err)
 		return false
 	}
-	stages, _ := record["stages"].([]any)
-	for _, s := range stages {
-		sm, ok := s.(map[string]any)
-		if !ok || sm["stage"] != "voice.sherpa_commands" {
-			continue
-		}
-		params, ok := sm["params"].(map[string]any)
-		if !ok {
-			params = map[string]any{}
-			sm["params"] = params
-		}
-		if dir != "" {
-			params["dump-segments"] = dir
-		} else {
-			delete(params, "dump-segments")
-		}
-	}
+	setCaptureDirParam(record, dir)
 	if err := h.plugin.Put("_platform.pipelines", "command_recognition", record); err != nil {
 		branchkit.Logf("voice", "capture: put record: %v", err)
 		return false
 	}
 	h.rewarmPipeline("command_recognition")
 	return true
+}
+
+// setCaptureDirParam sets (or, for an empty dir, removes) `dump-segments` on
+// a command_recognition record's Sherpa stage. Reports whether the record
+// changed.
+func setCaptureDirParam(record map[string]any, dir string) bool {
+	stages, _ := record["stages"].([]any)
+	changed := false
+	for _, s := range stages {
+		sm, ok := s.(map[string]any)
+		if !ok || sm["stage"] != "voice.sherpa_commands" {
+			continue
+		}
+		params, ok := sm["params"].(map[string]any)
+		if dir == "" {
+			if _, set := params["dump-segments"]; set {
+				delete(params, "dump-segments")
+				changed = true
+			}
+			continue
+		}
+		if !ok {
+			params = map[string]any{}
+			sm["params"] = params
+		}
+		if params["dump-segments"] != dir {
+			params["dump-segments"] = dir
+			changed = true
+		}
+	}
+	return changed
+}
+
+// reconcileOrphanedCapture turns off a recording the previous voice process
+// left on. The capture folder lives on the persistent command_recognition
+// record while who holds it lives only in this process, so a process that
+// died mid-game (or mid Say a phrase) leaves the stage saving every utterance
+// with no game running. A fresh process holds no capture, so any folder still
+// on the record is nobody's: remove it before the warmup starts the stage
+// from that record. It then deletes the recordings no finished game indexed,
+// which is what an abandoned game's own cleanup would have done.
+func (h *Host) reconcileOrphanedCapture() {
+	h.stageCaptureMu.Lock()
+	defer h.stageCaptureMu.Unlock()
+	if h.captureOwner != "" {
+		return // a game or session of this process holds it
+	}
+	rec, err := h.plugin.Get("_platform.pipelines", "command_recognition")
+	if err != nil || rec == nil {
+		branchkit.Logf("voice", "capture: could not check for a recording left on at start (%v)", err)
+	} else {
+		var record map[string]any
+		if err := json.Unmarshal(rec.Payload, &record); err != nil {
+			branchkit.Logf("voice", "capture: parse record at start: %v", err)
+		} else if setCaptureDirParam(record, "") {
+			if err := h.plugin.Put("_platform.pipelines", "command_recognition", record); err != nil {
+				branchkit.Logf("voice", "capture: a recording was left on at start and could not be turned off: %v", err)
+			} else {
+				branchkit.Logf("voice", "capture: turned off a recording the previous run left on")
+			}
+		}
+	}
+	if n := calibration.SweepOrphans(); n > 0 {
+		branchkit.Logf("voice", "capture: removed %d recordings no finished game kept", n)
+	}
 }
