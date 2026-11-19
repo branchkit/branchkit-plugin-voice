@@ -518,13 +518,22 @@ templ itDoes(data EditorView) {
 					/>
 				}
 				if data.ShowRecord {
+					// Stop and Record have ids of their own so a re-render
+					// replaces one with the other instead of changing it in
+					// place. A mouse press on Stop blurs the field, which
+					// stops recording; when that answer lands before the
+					// button comes up, a button changed in place received
+					// the click as Record and started recording again. A
+					// replaced button receives no click.
 					if data.Recording {
 						<button
+							id="newRuleRecordStop"
 							class="ef-btn ef-btn--accent ef-btn--input-bg ef-btn--nowrap ef-p6-10 recording-active"
 							data-on:click={ branchkit.MethodPost("settings/rules/editor-record-stop", "") }
 						>Stop</button>
 					} else {
 						<button
+							id="newRuleRecordStart"
 							class="ef-btn ef-btn--accent ef-btn--input-bg ef-btn--nowrap ef-p6-10"
 							title="Press the keys instead of typing their names"
 							data-on:click={ branchkit.MethodPost("settings/rules/editor-record-start", "") }
@@ -584,11 +593,13 @@ templ itDoes(data EditorView) {
 							if f.ShowRecord {
 								if f.Recording {
 									<button
+										id={ fmt.Sprintf("tmplf%drecstop", f.Index) }
 										class="ef-btn ef-btn--accent ef-btn--input-bg ef-btn--nowrap ef-s11 recording-active"
 										data-on:click={ branchkit.MethodPost("settings/rules/editor-record-stop", "") }
 									>Stop</button>
 								} else {
 									<button
+										id={ fmt.Sprintf("tmplf%drecstart", f.Index) }
 										class="ef-btn ef-btn--accent ef-btn--input-bg ef-btn--nowrap ef-s11"
 										data-on:click={ branchkit.MethodPost("settings/rules/editor-record-start", "") }
 									>Record</button>

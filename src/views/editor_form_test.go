@@ -63,8 +63,27 @@ func TestRecordingFieldsTakeFocusAndAreNamed(t *testing.T) {
 		t.Errorf("no hint for the template field: %s", tmpl)
 	}
 
+	// Stop and Record are different elements to a re-render (their own
+	// ids), never one button changed in place: a press on Stop that the
+	// field's blur answers first must not come up as a click on Record.
+	idleTmpl := render(EditorView{ShowTemplate: true, TmplFields: []TmplFieldView{
+		{Index: 2, ShowInput: true, ShowRecord: true},
+	}})
+	for html, id := range map[string]string{
+		simple:   `id="newRuleRecordStop"`,
+		tmpl:     `id="tmplf2recstop"`,
+		idleTmpl: `id="tmplf2recstart"`,
+	} {
+		if !strings.Contains(html, id) {
+			t.Errorf("no button with %s in %s", id, html)
+		}
+	}
+
 	// Not recording: nothing asks for focus.
 	idle := render(EditorView{ShowSimple: true, ShowRecord: true})
+	if !strings.Contains(idle, `id="newRuleRecordStart"`) {
+		t.Errorf("the Record button has no id of its own: %s", idle)
+	}
 	if strings.Contains(idle, `data-init="el.focus()"`) || strings.Contains(idle, "newRuleRecordHint") {
 		t.Errorf("an idle form asks for focus: %s", idle)
 	}
