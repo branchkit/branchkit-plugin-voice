@@ -54,6 +54,14 @@ func (r *cmdRecRecovery) allow(now time.Time) bool {
 	return true
 }
 
+// reset empties the budget: the person turned listening on again, as the
+// give-up notice tells them to, so the failures before it count no more.
+func (r *cmdRecRecovery) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.restarts = nil
+}
+
 // cmdRecWanted reports whether the persistent command_recognition run
 // should be up now: continuous listening is on, and neither a dictation nor
 // a command hold has set it aside (each brings it back when it ends).

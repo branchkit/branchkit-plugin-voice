@@ -1570,6 +1570,9 @@ func (h *Host) handleVoiceContinuousToggle(_ *branchkit.OnActionRequest) (any, e
 			}
 			return h.handled(), nil
 		}
+		// A fresh start: the restarts spent before (the give-up notice says
+		// to turn listening on again) do not count against it.
+		h.cmdRecRecovery.reset()
 		h.sess.SetCmdRecActive()
 		h.setVoiceMode("continuous_sleeping")
 		h.runCommandRecognition(false)

@@ -146,6 +146,37 @@ func TestContinuousGivesUpOnCommandRecognitionThatKeepsFailing(t *testing.T) {
 	}
 }
 
+// Turning listening on again after a give-up, as the notice says, starts
+// with the whole budget: the next transient failure is restarted, not
+// given up on at once.
+func TestTurningListeningOnAgainRefillsTheRestartBudget(t *testing.T) {
+	h := newTestHost()
+	resetState(h)
+	calls := watchPipelines(h)
+	runRestartsNow(h)
+	got := notices(h)
+	listening(t, h)
+	for range cmdRecRestartLimit + 1 {
+		h.handleCmdRecStopped("error", "model missing")
+	}
+	wantMode(t, h, "idle")
+	if len(*got) != 1 {
+		t.Fatalf("one give-up notice: %v", *got)
+	}
+
+	h.lastContinuousToggle = time.Time{}
+	listening(t, h)
+	calls.take()
+	h.handleCmdRecStopped("error", "stage exited")
+	if runs := calls.take(); !slices.Equal(runs, []string{"run command_recognition"}) {
+		t.Fatalf("restarted after listening was turned on again; calls %v", runs)
+	}
+	wantMode(t, h, "continuous_sleeping")
+	if len(*got) != 1 {
+		t.Fatalf("no second notice: %v", *got)
+	}
+}
+
 func TestCmdRecRestartBudgetRefillsAfterTheWindow(t *testing.T) {
 	var r cmdRecRecovery
 	start := time.Now()
