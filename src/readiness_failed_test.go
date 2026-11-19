@@ -34,9 +34,10 @@ func TestAFailedWarmSaysSoAndSettlesThePanel(t *testing.T) {
 	if h.dictationWarmGen != 0 {
 		t.Fatal("a dictation stage that could not start must close its starting notice")
 	}
-	row := rowFor(t, h, "dictation")
-	if !strings.Contains(row, "Couldn't start") || !strings.Contains(row, "no stage on this OS") {
-		t.Fatalf("the dictation row must say it could not start and why, got %q", row)
+	// The row says it could not start; the reason is not on it, where the
+	// window would cut it to one line, but in the footer below.
+	if row := rowFor(t, h, "dictation"); row != "Couldn't start" {
+		t.Fatalf("the dictation row must say it could not start, got %q", row)
 	}
 	if h.warmupSettled() {
 		t.Fatal("command_recognition is still loading: the panel is not settled")
@@ -61,6 +62,15 @@ func TestAFailedWarmSaysSoAndSettlesThePanel(t *testing.T) {
 		if !strings.Contains(s, "Settings › Voice › Models") || !strings.Contains(s, "Speech models on the Setup page") {
 			t.Fatalf("a failed engine points at the Models tab and Setup's Speech models, got %q", s)
 		}
+	}
+	// The footer, which wraps, names the engine and its whole reason first,
+	// without the platform's "warm failed:" prefix.
+	want := "Dictation voice engine: voice.whisperkit_stt: no stage on this OS. " + failedEngineHint
+	if footer != want {
+		t.Fatalf("footer:\n got %q\nwant %q", footer, want)
+	}
+	if strings.Contains(footer+rowFor(t, h, "dictation"), "warm failed") {
+		t.Fatalf("the platform's prefix is shown: %q", footer)
 	}
 
 	// An error for an engine already up is a run's business, not the panel's.

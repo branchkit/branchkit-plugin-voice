@@ -138,7 +138,7 @@ func (h *Host) handlePipelineError(pipeline, errText string) {
 		h.warmMu.Unlock()
 		return
 	}
-	h.warmFailed[pipeline] = errText
+	h.warmFailed[pipeline] = failedReason(errText)
 	h.warmMu.Unlock()
 	branchkit.Logf("voice", "warmup: %s could not start: %s", pipeline, errText)
 	h.refreshWarmup()
@@ -179,6 +179,10 @@ func (h *Host) warmupTitle() string {
 // say where its model can be seen, downloaded or changed; the reason alone
 // left the person nowhere to go. The footer, not the engine's row, carries
 // it: the window cuts a row's subtitle to one line, a footer wraps.
+//
+// The reason an engine could not start goes in the footer too, before the
+// hint: on the engine's row it was cut to about 40 characters in voice's
+// window, so the cause never showed.
 func (h *Host) warmupHeading() (title, phrase, footer string) {
 	if !h.warmupSettled() {
 		return "Warming up voice…", "warming up voice", ""
@@ -187,7 +191,35 @@ func (h *Host) warmupHeading() (title, phrase, footer string) {
 	if !h.anyEngineFailed() {
 		return title, title, ""
 	}
-	return title, title + ". " + failedEngineHint, failedEngineHint
+	return title, title + ". " + failedEngineHint, h.failedReasons() + failedEngineHint
+}
+
+// failedReasons is one "<engine>: <reason>." per engine that could not
+// start, each followed by a space, in the panel's row order.
+func (h *Host) failedReasons() string {
+	h.warmMu.Lock()
+	defer h.warmMu.Unlock()
+	var b strings.Builder
+	for _, t := range warmTargets {
+		if why, ok := h.warmFailed[t.pipeline]; ok {
+			b.WriteString(t.label + ": " + sentence(why) + " ")
+		}
+	}
+	return b.String()
+}
+
+// failedReason is the platform's warm error without its "warm failed:"
+// prefix: "voice.whisperkit_stt: no stage on this OS".
+func failedReason(errText string) string {
+	return strings.TrimSpace(strings.TrimPrefix(errText, warmFailedPrefix))
+}
+
+// sentence ends a reason with a full stop unless it already ends one.
+func sentence(s string) string {
+	if s == "" || strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") {
+		return s
+	}
+	return s + "."
 }
 
 // failedEngineHint is where to go when an engine could not start: where
@@ -295,16 +327,23 @@ func (h *Host) readinessSections() []branchkit.OutputSection {
 	var items []branchkit.OutputItem
 	for _, t := range warmTargets {
 		status := "Loading…"
+		phrase := ""
 		if h.warmReady[t.pipeline] {
 			status = "Ready ✓"
 		} else if why, failed := h.warmFailed[t.pipeline]; failed {
-			status = "Couldn't start: " + why
+			// The row says only that it failed: the window cuts a
+			// subtitle to one line, so the reason is in the footer.
+			status = "Couldn't start"
+			phrase = t.label + " couldn't start: " + why
+		}
+		if phrase == "" {
+			phrase = t.label + " " + status
 		}
 		st := status
 		items = append(items, branchkit.OutputItem{
 			ID:       t.pipeline,
 			Title:    t.label,
-			Phrase:   t.label + " " + status,
+			Phrase:   phrase,
 			Subtitle: &st,
 		})
 	}
