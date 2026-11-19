@@ -497,11 +497,15 @@ templ itDoes(data EditorView) {
 						type="text"
 						class="recording-pulse ef-box ef-box--grow ef-box--mono"
 						placeholder="Press a key..."
+						aria-label="Press the keys for this command"
+						aria-describedby="newRuleRecordHint"
+						data-init="el.focus()"
 						data-signals:newruleactionval={ ui.JS(data.ActionVal) }
 						data-bind:newRuleActionVal
 						data-on:keydown={ "evt.preventDefault(); evt.stopPropagation(); " + branchkit.MethodPost("settings/rules/editor-record-keydown", `{code: evt.code, key: evt.key, ctrl: evt.ctrlKey, alt: evt.altKey, shift: evt.shiftKey, meta: evt.metaKey}`) }
 						data-on:blur={ branchkit.MethodPost("settings/rules/editor-record-stop", "") }
 					/>
+					<span id="newRuleRecordHint" hidden>Recording. Esc cancels.</span>
 				} else {
 					<input
 						id="newRuleActionInput"
@@ -556,12 +560,16 @@ templ itDoes(data EditorView) {
 										type="text"
 										class="recording-pulse ef-box ef-box--grow ef-box--mono ef-p4-6 ef-s12"
 										placeholder="Press a key..."
+										aria-label="Press the keys for this command"
+										aria-describedby={ fmt.Sprintf("tmplf%drechint", f.Index) }
+										data-init="el.focus()"
 										readonly
 										value={ f.Val }
 										data-bind={ fmt.Sprintf("tmplf%dval", f.Index) }
 										data-on:keydown={ "evt.preventDefault(); evt.stopPropagation(); " + branchkit.MethodPost("settings/rules/editor-record-keydown", `{code: evt.code, key: evt.key, ctrl: evt.ctrlKey, alt: evt.altKey, shift: evt.shiftKey, meta: evt.metaKey}`) }
 										data-on:blur={ branchkit.MethodPost("settings/rules/editor-record-stop", "") }
 									/>
+									<span id={ fmt.Sprintf("tmplf%drechint", f.Index) } hidden>Recording. Esc cancels.</span>
 								} else {
 									<input
 										type="text"
