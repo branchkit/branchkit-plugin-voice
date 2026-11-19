@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/branchkit/branchkit-plugin-voice/calibration"
@@ -404,14 +405,51 @@ func setCaptureDirParam(record map[string]any, dir string) bool {
 	return changed
 }
 
+// captureDirParam is the capture folder on a command_recognition record's
+// Sherpa stage, "" when none is set.
+func captureDirParam(record map[string]any) string {
+	stages, _ := record["stages"].([]any)
+	for _, s := range stages {
+		sm, ok := s.(map[string]any)
+		if !ok || sm["stage"] != "voice.sherpa_commands" {
+			continue
+		}
+		params, _ := sm["params"].(map[string]any)
+		if dir, _ := params["dump-segments"].(string); dir != "" {
+			return dir
+		}
+	}
+	return ""
+}
+
+// leftoverGame names the calibration game folder a leftover capture folder
+// is, "" when dir is not a game folder directly under the capture root or is
+// a Say a phrase session's (those are swept by sweepSayNow, which keeps what
+// the person confirmed).
+func leftoverGame(dir string) string {
+	root := calibration.CaptureRoot()
+	if root == "" || dir == "" || filepath.Dir(filepath.Clean(dir)) != filepath.Clean(root) {
+		return ""
+	}
+	game := filepath.Base(dir)
+	if strings.HasPrefix(game, "saynow-") {
+		return ""
+	}
+	return game
+}
+
 // reconcileOrphanedCapture turns off a recording the previous voice process
 // left on. The capture folder lives on the persistent command_recognition
 // record while who holds it lives only in this process, so a process that
 // died mid-game (or mid Say a phrase) leaves the stage saving every utterance
 // with no game running. A fresh process holds no capture, so any folder still
 // on the record is nobody's: remove it before the warmup starts the stage
-// from that record. It then deletes the recordings no finished game indexed,
-// which is what an abandoned game's own cleanup would have done.
+// from that record. Once the record is clear it deletes that game's folder,
+// as an abandoned game's own cleanup does: a game indexes its clips only
+// after it has released the capture, so nothing in a folder still on the
+// record was ever kept. Only that one folder: a sweep of everything the
+// index does not list would delete every kept recording after a crash that
+// cut the index short.
 func (h *Host) reconcileOrphanedCapture() {
 	h.stageCaptureMu.Lock()
 	defer h.stageCaptureMu.Unlock()
@@ -421,19 +459,25 @@ func (h *Host) reconcileOrphanedCapture() {
 	rec, err := h.plugin.Get("_platform.pipelines", "command_recognition")
 	if err != nil || rec == nil {
 		branchkit.Logf("voice", "capture: could not check for a recording left on at start (%v)", err)
-	} else {
-		var record map[string]any
-		if err := json.Unmarshal(rec.Payload, &record); err != nil {
-			branchkit.Logf("voice", "capture: parse record at start: %v", err)
-		} else if setCaptureDirParam(record, "") {
-			if err := h.plugin.Put("_platform.pipelines", "command_recognition", record); err != nil {
-				branchkit.Logf("voice", "capture: a recording was left on at start and could not be turned off: %v", err)
-			} else {
-				branchkit.Logf("voice", "capture: turned off a recording the previous run left on")
-			}
-		}
+		return
 	}
-	if n := calibration.SweepOrphans(); n > 0 {
-		branchkit.Logf("voice", "capture: removed %d recordings no finished game kept", n)
+	var record map[string]any
+	if err := json.Unmarshal(rec.Payload, &record); err != nil {
+		branchkit.Logf("voice", "capture: parse record at start: %v", err)
+		return
+	}
+	dir := captureDirParam(record)
+	if !setCaptureDirParam(record, "") {
+		return
+	}
+	if err := h.plugin.Put("_platform.pipelines", "command_recognition", record); err != nil {
+		branchkit.Logf("voice", "capture: a recording was left on at start and could not be turned off: %v", err)
+		return // the stage may still write there
+	}
+	branchkit.Logf("voice", "capture: turned off a recording the previous run left on")
+	if game := leftoverGame(dir); game != "" {
+		if err := calibration.SweepGame(game); err != nil {
+			branchkit.Logf("voice", "capture: could not remove the abandoned game's recordings (%s): %v", game, err)
+		}
 	}
 }

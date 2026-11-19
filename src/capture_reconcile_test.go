@@ -67,51 +67,64 @@ func TestSettingACaptureFolder(t *testing.T) {
 	}
 }
 
-func writeCaptureFile(t *testing.T, root, rel string) {
-	t.Helper()
-	p := filepath.Join(root, rel)
+func TestCaptureDirParamReadsTheCommandStage(t *testing.T) {
+	if got := captureDirParam(captureTestRecord(map[string]any{"dump-segments": "/d/g1"})); got != "/d/g1" {
+		t.Errorf("got %q", got)
+	}
+	// The mic stage's param of the same name is not the capture folder.
+	if got := captureDirParam(captureTestRecord(nil)); got != "" {
+		t.Errorf("no folder set, got %q", got)
+	}
+}
+
+// Only a calibration game's folder directly under the capture root is
+// deleted at start. A Say a phrase folder holds clips the person may have
+// confirmed, and anything else is not ours to remove.
+func TestLeftoverGameNamesOnlyAGameFolderUnderTheRoot(t *testing.T) {
+	t.Setenv("BRANCHKIT_PLUGIN_DATA", t.TempDir())
+	root := calibration.CaptureRoot()
+	cases := map[string]string{
+		filepath.Join(root, "g1"):              "g1",
+		filepath.Join(root, "g1") + "/":        "g1",
+		filepath.Join(root, "saynow-abc"):      "",
+		filepath.Join(root, "g1", "deeper"):    "",
+		root:                                   "",
+		filepath.Dir(root):                     "",
+		filepath.Join(root, "..", "elsewhere"): "",
+		"/somewhere/else/g1":                   "",
+		"":                                     "",
+	}
+	for dir, want := range cases {
+		if got := leftoverGame(dir); got != want {
+			t.Errorf("leftoverGame(%q) = %q, want %q", dir, got, want)
+		}
+	}
+}
+
+func TestLeftoverGameWithNoDataDirNamesNothing(t *testing.T) {
+	t.Setenv("BRANCHKIT_PLUGIN_DATA", "")
+	if got := leftoverGame("/x/calibration-capture/g1"); got != "" {
+		t.Errorf("got %q with no capture root", got)
+	}
+}
+
+// With the record unreadable nothing is known to be abandoned, so nothing
+// on disk is touched: recordings the index does not list stay (a crash can
+// cut the index short, and they are still in the Recordings list).
+func TestStartDeletesNothingWhenTheRecordCannotBeRead(t *testing.T) {
+	t.Setenv("BRANCHKIT_PLUGIN_DATA", t.TempDir())
+	root := calibration.CaptureRoot()
+	p := filepath.Join(root, "g1", "seg_00001.wav")
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(p, []byte("RIFF"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// A fresh process deletes what a game it never finished left on disk and
-// keeps what a finished game indexed, even when the record cannot be read.
-func TestStartRemovesRecordingsNoFinishedGameKept(t *testing.T) {
-	t.Setenv("BRANCHKIT_PLUGIN_DATA", t.TempDir())
-	root := calibration.CaptureRoot()
-	writeCaptureFile(t, root, "kept/seg_00001.wav")
-	writeCaptureFile(t, root, "abandoned/seg_00001.wav")
-	writeCaptureFile(t, root, "abandoned/manifest.jsonl")
-	if err := calibration.WriteCorpus([]calibration.CorpusEntry{{File: "kept/seg_00001.wav", Target: "k"}}, "rewrite"); err != nil {
-		t.Fatal(err)
-	}
 
 	newTestHost().reconcileOrphanedCapture()
 
-	if _, err := os.Stat(filepath.Join(root, "abandoned")); !os.IsNotExist(err) {
-		t.Error("the abandoned game's folder is still on disk")
-	}
-	if _, err := os.Stat(filepath.Join(root, "kept/seg_00001.wav")); err != nil {
-		t.Errorf("an indexed clip was removed: %v", err)
-	}
-}
-
-// Called while this process holds the capture (never at start, but the guard
-// is what keeps a later call from deleting a running game's clips).
-func TestReconcileLeavesAHeldCaptureAlone(t *testing.T) {
-	t.Setenv("BRANCHKIT_PLUGIN_DATA", t.TempDir())
-	root := calibration.CaptureRoot()
-	writeCaptureFile(t, root, "running/seg_00001.wav")
-	h := newTestHost()
-	h.captureOwner = captureOwnerCalibration
-
-	h.reconcileOrphanedCapture()
-
-	if _, err := os.Stat(filepath.Join(root, "running/seg_00001.wav")); err != nil {
-		t.Errorf("a running game's clip was removed: %v", err)
+	if _, err := os.Stat(p); err != nil {
+		t.Errorf("a recording was removed with the record unread: %v", err)
 	}
 }
