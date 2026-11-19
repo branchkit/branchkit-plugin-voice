@@ -32,8 +32,9 @@ const (
 	// The EXCLUSIVE, scoped gate held while a tie is awaiting the user's
 	// pick. Writer-held (`held_by_writer`, the tag-preset default), so the
 	// platform releases it if this process dies mid-tie — no boot reconcile
-	// needed here. It was briefly exported for exactly that reconcile, which
-	// the platform reaping made redundant.
+	// needed for the tag. The card is another matter: the platform keeps a
+	// plugin's cards across a restart, so startup clears it
+	// (ClearLeftoverTieCard).
 	tagDisambiguating = "plugin.voice.disambiguating"
 	// tieCard is the card channel (manifest `hud_cards`) the chooser is
 	// drawn on: a platform card at the top centre, where every plugin's
@@ -436,6 +437,13 @@ func (s *State) clearDisambiguatingTag() {
 
 // clearTieCard takes the chooser card down. Clearing a card that is not up
 // is harmless.
+// ClearLeftoverTieCard takes down a tie card a previous voice process left
+// up (it exited mid-tie): this one starts with no tie, so no ClearTie,
+// dismiss or countdown would ever clear it. Run once at startup.
+func (s *State) ClearLeftoverTieCard() {
+	s.clearTieCard()
+}
+
 func (s *State) clearTieCard() {
 	if s.Platform == nil {
 		return

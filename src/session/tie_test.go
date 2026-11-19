@@ -631,6 +631,23 @@ func TestClosingTheTieCardEndsTheTie(t *testing.T) {
 	}
 }
 
+// A fresh process has no tie, but a previous one may have left its card up:
+// startup clears the card channel anyway.
+func TestStartupClearsALeftoverTieCard(t *testing.T) {
+	s := newTestState()
+	rec := &tieRecorder{}
+	s.Platform = rec
+	s.ClearTie()
+	if rec.count(branchkit.MethodOutputClear) != 0 {
+		t.Fatalf("ClearTie with no tie sends nothing (the gap): calls=%v", rec.methods())
+	}
+	s.ClearLeftoverTieCard()
+	req, _ := rec.firstParams(branchkit.MethodOutputClear).(branchkit.OutputClearRequest)
+	if req.Channel != tieCard {
+		t.Errorf("startup clears %q, got calls=%v", tieCard, rec.methods())
+	}
+}
+
 // In continuous mode no hold's end clears a tie: it lapses after the
 // countdown, card and all, and the card shows the countdown.
 func TestAContinuousTieLapses(t *testing.T) {

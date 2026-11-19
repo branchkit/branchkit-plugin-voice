@@ -388,6 +388,11 @@ func main() {
 	// disambiguating tags are writer-held (platform-reaped on death), and the
 	// key-capture pause is the suppress_keybinds EFFECT now — released by
 	// cleanup_terminated_plugin like every other effect.
+	//
+	// The tie card is not: the platform keeps a plugin's cards across its
+	// restart, and this process starts with no tie, so nothing it does
+	// later would clear a "Which command?" card a previous one left up.
+	h.sess.ClearLeftoverTieCard()
 
 	// The mode tag is the one piece of session state the platform does NOT
 	// reap (held_by_writer: false — continuous mode must survive a
