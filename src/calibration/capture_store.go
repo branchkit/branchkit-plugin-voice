@@ -201,7 +201,9 @@ func SweepGame(game string) error {
 
 // SweepAbandonedGame removes what one game folder holds that the index does
 // not list: the whole folder when the index lists none of its clips, else
-// each unlisted WAV (the manifest and the kept clips stay). It deletes
+// each unlisted WAV (the manifest and the kept clips stay; an unlisted WAV
+// is one recorded after the game, or one of the game's that fell outside
+// every trial and was never labelled). It deletes
 // nothing when the index exists and cannot be read: an unread index lists
 // nothing, and that must not read as "nothing here was kept".
 func SweepAbandonedGame(game string) (int, error) {
