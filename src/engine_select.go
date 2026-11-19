@@ -445,8 +445,8 @@ func leftoverGame(dir string) string {
 // with no game running. A fresh process holds no capture, so any folder still
 // on the record is nobody's: remove it before the warmup starts the stage
 // from that record. Once the record is clear it deletes that game's folder,
-// as an abandoned game's own cleanup does, unless the index lists a clip in
-// it (a game that finished while its release failed). Only that one folder: a sweep of everything the
+// as an abandoned game's own cleanup does, keeping any clip the index lists
+// (a game that finished while its release failed). Only that one folder: a sweep of everything the
 // index does not list would delete every kept recording after a crash that
 // cut the index short.
 func (h *Host) reconcileOrphanedCapture() {
@@ -486,15 +486,13 @@ func clearLeftoverCapture(record map[string]any, put func(map[string]any) error)
 	if game == "" {
 		return
 	}
-	// A game that finished while clearing the record failed has indexed
-	// clips in this folder: those are kept recordings, not leftovers.
-	for _, row := range calibration.ReadCorpus() {
-		if strings.HasPrefix(row.File, game+"/") {
-			branchkit.Logf("voice", "capture: %s holds kept recordings; its folder is left as it is", game)
-			return
-		}
-	}
-	if err := calibration.SweepGame(game); err != nil {
+	// Kept clips stay: a game that finished while clearing the record
+	// failed has indexed clips in this folder, beside what the stage went
+	// on saving after it.
+	n, err := calibration.SweepAbandonedGame(game)
+	if err != nil {
 		branchkit.Logf("voice", "capture: could not remove the abandoned game's recordings (%s): %v", game, err)
+		return
 	}
+	branchkit.Logf("voice", "capture: removed %d recordings of %s that no game kept", n, game)
 }

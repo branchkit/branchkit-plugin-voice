@@ -382,3 +382,88 @@ func TestBuildExportArchive(t *testing.T) {
 		t.Fatal("confirmed-only export with no confirmed clips must fail")
 	}
 }
+
+// An abandoned game's folder goes whole when the index lists none of it.
+func TestSweepAbandonedGameRemovesAnUnindexedFolder(t *testing.T) {
+	root := newCaptureRoot(t)
+	writeClip(t, root, "g1/a.wav")
+	writeClip(t, root, "g1/"+captureManifestName)
+	writeClip(t, root, "g2/kept.wav")
+	if err := WriteCorpus([]CorpusEntry{{File: "g2/kept.wav", Target: "k"}}, "rewrite"); err != nil {
+		t.Fatal(err)
+	}
+	n, err := SweepAbandonedGame("g1")
+	if err != nil || n != 1 {
+		t.Fatalf("removed %d, err %v", n, err)
+	}
+	if exists(filepath.Join(root, "g1")) {
+		t.Error("the folder is still there")
+	}
+	if !exists(filepath.Join(root, "g2/kept.wav")) {
+		t.Error("another game's clip was removed")
+	}
+}
+
+// With no index at all (no game ever finished) the folder still goes.
+func TestSweepAbandonedGameWithNoIndex(t *testing.T) {
+	root := newCaptureRoot(t)
+	writeClip(t, root, "g1/a.wav")
+	if _, err := SweepAbandonedGame("g1"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(filepath.Join(root, "g1")) {
+		t.Error("the folder is still there")
+	}
+}
+
+// A folder the index lists clips in keeps them and its manifest; only the
+// WAVs recorded after the game (unlisted) go.
+func TestSweepAbandonedGameKeepsIndexedClips(t *testing.T) {
+	root := newCaptureRoot(t)
+	writeClip(t, root, "g1/kept.wav")
+	writeClip(t, root, "g1/after.wav")
+	writeClip(t, root, "g1/"+captureManifestName)
+	if err := WriteCorpus([]CorpusEntry{{File: "g1/kept.wav", Target: "k"}}, "rewrite"); err != nil {
+		t.Fatal(err)
+	}
+	n, err := SweepAbandonedGame("g1")
+	if err != nil || n != 1 {
+		t.Fatalf("removed %d, err %v", n, err)
+	}
+	want := []string{corpusIndexName, "g1/kept.wav", "g1/" + captureManifestName}
+	sort.Strings(want)
+	if got := listFiles(t, root); !reflect.DeepEqual(got, want) {
+		t.Fatalf("left %v, want %v", got, want)
+	}
+}
+
+// An index that exists and cannot be read lists nothing; that must delete
+// nothing.
+func TestSweepAbandonedGameDeletesNothingWhenTheIndexIsUnreadable(t *testing.T) {
+	root := newCaptureRoot(t)
+	writeClip(t, root, "g1/kept.wav")
+	// A directory where the index file belongs: reading it fails, and not
+	// with "does not exist".
+	if err := os.Mkdir(filepath.Join(root, corpusIndexName), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SweepAbandonedGame("g1"); err == nil {
+		t.Fatal("an unreadable index was treated as an empty one")
+	}
+	if !exists(filepath.Join(root, "g1/kept.wav")) {
+		t.Error("a clip was removed with the index unread")
+	}
+}
+
+func TestSweepAbandonedGameRefusesNamesOutsideTheRoot(t *testing.T) {
+	root := newCaptureRoot(t)
+	writeClip(t, root, "g1/a.wav")
+	for _, game := range []string{"", ".", "..", "../x", "g1/.."} {
+		if _, err := SweepAbandonedGame(game); err != nil {
+			t.Errorf("%q: %v", game, err)
+		}
+	}
+	if !exists(filepath.Join(root, "g1/a.wav")) {
+		t.Error("a name outside the root deleted something")
+	}
+}

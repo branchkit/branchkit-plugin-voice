@@ -207,6 +207,25 @@ func TestALeftoverFolderWithIndexedClipsIsKept(t *testing.T) {
 	}
 }
 
+// What the stage saved into that folder after the game ended is not kept.
+func TestALeftoverFolderLosesWhatWasRecordedAfterItsGame(t *testing.T) {
+	record, clip := leftoverRecord(t, "g1")
+	after := filepath.Join(filepath.Dir(clip), "seg_00002.wav")
+	if err := os.WriteFile(after, []byte("RIFF"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := calibration.WriteCorpus([]calibration.CorpusEntry{{File: "g1/seg_00001.wav", Target: "k"}}, "rewrite"); err != nil {
+		t.Fatal(err)
+	}
+	clearLeftoverCapture(record, func(map[string]any) error { return nil })
+	if _, err := os.Stat(after); !os.IsNotExist(err) {
+		t.Error("a recording made after the game ended is still on disk")
+	}
+	if _, err := os.Stat(clip); err != nil {
+		t.Errorf("the indexed clip was removed: %v", err)
+	}
+}
+
 // A Say a phrase folder is turned off but left to that feature's own sweep.
 func TestALeftoverSayAPhraseFolderIsNotDeletedHere(t *testing.T) {
 	record, clip := leftoverRecord(t, "saynow-abc")

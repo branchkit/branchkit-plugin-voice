@@ -199,6 +199,51 @@ func SweepGame(game string) error {
 	return nil
 }
 
+// SweepAbandonedGame removes what one game folder holds that the index does
+// not list: the whole folder when the index lists none of its clips, else
+// each unlisted WAV (the manifest and the kept clips stay). It deletes
+// nothing when the index exists and cannot be read: an unread index lists
+// nothing, and that must not read as "nothing here was kept".
+func SweepAbandonedGame(game string) (int, error) {
+	root := CaptureRoot()
+	dir, ok := clipPath(root, game)
+	if !ok || game == "" {
+		return 0, nil
+	}
+	if _, err := os.ReadFile(filepath.Join(root, corpusIndexName)); err != nil && !os.IsNotExist(err) {
+		return 0, fmt.Errorf("read the index: %w", err)
+	}
+	kept := map[string]bool{}
+	for _, r := range ReadCorpus() {
+		if strings.HasPrefix(r.File, game+"/") {
+			kept[r.File] = true
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	removed := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".wav") || kept[game+"/"+e.Name()] {
+			continue
+		}
+		if len(kept) > 0 {
+			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+				return removed, err
+			}
+		}
+		removed++
+	}
+	if len(kept) == 0 {
+		return removed, SweepGame(game)
+	}
+	return removed, nil
+}
+
 // SweepOrphans reclaims WAVs no corpus row references, plus game dirs left
 // without any WAV. Labeled clips and the index survive.
 func SweepOrphans() int {
