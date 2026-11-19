@@ -65,7 +65,19 @@ func (h *Host) actionRegistrations() []actionRegistration {
 		{"voice.help_toggle", h.handleVoiceHelpToggle},
 		{"voice.repeat", h.handleVoiceRepeat},
 		{"voice.pick_tie", h.handleVoicePickTie},
+		{"voice.dismiss_tie", h.handleVoiceDismissTie},
 	}
+}
+
+// voice.dismiss_tie: the "Which command?" card's on_close. The person
+// closed the card (its close button, Escape, hiding it, or a newer list
+// taking its place), so the tie ends with it: its choice words and the
+// exclusive disambiguating mode go, or everything but a choice word would
+// stay suppressed with nothing on screen until the countdown or the hold's
+// end.
+func (h *Host) handleVoiceDismissTie(req *branchkit.OnActionRequest) (any, error) {
+	h.sess.ClearTie()
+	return h.handled(), nil
 }
 
 // hud.show — voice plugin owns the main HUD; platform dispatches here when

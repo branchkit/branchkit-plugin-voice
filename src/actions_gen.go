@@ -50,6 +50,15 @@ func HandleDictationCancel(p *branchkit.Plugin, fn branchkit.ActionHandlerFunc) 
 	p.HandleAction("voice.dictation_cancel", fn)
 }
 
+// DismissTieParams is the params shape for action "voice.dismiss_tie (Close the Command Choices)".
+type DismissTieParams struct {
+}
+
+// HandleDismissTie registers a typed handler for action "voice.dismiss_tie (Close the Command Choices)".
+func HandleDismissTie(p *branchkit.Plugin, fn branchkit.ActionHandlerFunc) {
+	p.HandleAction("voice.dismiss_tie", fn)
+}
+
 // EnterPickerParams is the params shape for action "voice.enter_picker (Enter Open Picker)".
 type EnterPickerParams struct {
 	Mode *string `json:"mode,omitempty"`

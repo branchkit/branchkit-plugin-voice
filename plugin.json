@@ -1063,6 +1063,7 @@
   "hud_cards": [
     {
       "channel": "voice.which",
+      "on_close": "voice.dismiss_tie",
       "description": "Which command? The commands one phrase could mean, each beside a word to say"
     },
     {
@@ -1220,6 +1221,9 @@
           "required": false
         }
       ]
+    },
+    "dismiss_tie": {
+      "label": "Close the Command Choices"
     },
     "pick_tie": {
       "label": "Pick Tie-Break Choice",

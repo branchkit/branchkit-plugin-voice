@@ -609,6 +609,28 @@ func TestDismissingATieClearsItsCard(t *testing.T) {
 	}
 }
 
+// Closing the card (its on_close, voice.dismiss_tie, calls ClearTie) ends
+// the tie: no choice words, no exclusive mode, nothing left on screen.
+func TestClosingTheTieCardEndsTheTie(t *testing.T) {
+	s := newTestState()
+	rec := &tieRecorder{}
+	s.Platform = rec
+	s.callResolveFn = func(words []string, requireTag *string, activeTags []string) *resolveResponse {
+		return tieResolveResp("spotify", "youtube")
+	}
+	s.orchestrate(&OrchestrateRequest{Words: []string{"play"}, Mode: "continuous_awake"})
+	if !s.IsTieActive() {
+		t.Fatalf("a tie is up, calls=%v", rec.methods())
+	}
+	s.ClearTie()
+	if s.IsTieActive() {
+		t.Errorf("closing the card must end the tie")
+	}
+	if rec.count(branchkit.MethodOutputClear) == 0 {
+		t.Errorf("the card is cleared with it, calls=%v", rec.methods())
+	}
+}
+
 // In continuous mode no hold's end clears a tie: it lapses after the
 // countdown, card and all, and the card shows the countdown.
 func TestAContinuousTieLapses(t *testing.T) {
