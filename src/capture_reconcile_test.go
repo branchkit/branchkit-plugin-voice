@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -126,5 +127,91 @@ func TestStartDeletesNothingWhenTheRecordCannotBeRead(t *testing.T) {
 
 	if _, err := os.Stat(p); err != nil {
 		t.Errorf("a recording was removed with the record unread: %v", err)
+	}
+}
+
+// leftoverRecord sets up a capture root holding one game folder with a clip
+// and a manifest, and the record a process that died mid-game leaves.
+func leftoverRecord(t *testing.T, game string) (record map[string]any, clip string) {
+	t.Helper()
+	t.Setenv("BRANCHKIT_PLUGIN_DATA", t.TempDir())
+	dir := filepath.Join(calibration.CaptureRoot(), game)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	clip = filepath.Join(dir, "seg_00001.wav")
+	for _, p := range []string{clip, filepath.Join(dir, "manifest.jsonl")} {
+		if err := os.WriteFile(p, []byte("RIFF"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return captureTestRecord(map[string]any{"dump-segments": dir}), clip
+}
+
+// The whole case: the record names a game folder, so the record is written
+// back without it and the game's recordings are deleted.
+func TestALeftoverCaptureIsTurnedOffAndItsGameDeleted(t *testing.T) {
+	record, clip := leftoverRecord(t, "g1")
+	puts := 0
+	clearLeftoverCapture(record, func(written map[string]any) error {
+		puts++
+		if captureDirParam(written) != "" {
+			t.Error("the record written back still names a capture folder")
+		}
+		return nil
+	})
+	if puts != 1 {
+		t.Fatalf("the record was written %d times, want 1", puts)
+	}
+	if _, err := os.Stat(filepath.Dir(clip)); !os.IsNotExist(err) {
+		t.Error("the abandoned game's folder is still on disk")
+	}
+}
+
+// Nothing left on: no write, and nothing on disk is touched.
+func TestNoLeftoverCaptureWritesAndDeletesNothing(t *testing.T) {
+	_, clip := leftoverRecord(t, "g1")
+	clearLeftoverCapture(captureTestRecord(map[string]any{"model": "m"}), func(map[string]any) error {
+		t.Error("a record with no capture folder was written back")
+		return nil
+	})
+	if _, err := os.Stat(clip); err != nil {
+		t.Errorf("a recording was removed with no capture left on: %v", err)
+	}
+}
+
+// If the record cannot be cleared the stage may still be writing there, and
+// the next start tries again: nothing is deleted.
+func TestAFailedWriteDeletesNothing(t *testing.T) {
+	record, clip := leftoverRecord(t, "g1")
+	clearLeftoverCapture(record, func(map[string]any) error { return errors.New("denied") })
+	if _, err := os.Stat(clip); err != nil {
+		t.Errorf("a recording was removed though the record was not cleared: %v", err)
+	}
+}
+
+// A game that finished while its release failed has indexed clips in the
+// folder the record still names. They are kept recordings.
+func TestALeftoverFolderWithIndexedClipsIsKept(t *testing.T) {
+	record, clip := leftoverRecord(t, "g1")
+	if err := calibration.WriteCorpus([]calibration.CorpusEntry{{File: "g1/seg_00001.wav", Target: "k"}}, "rewrite"); err != nil {
+		t.Fatal(err)
+	}
+	cleared := false
+	clearLeftoverCapture(record, func(map[string]any) error { cleared = true; return nil })
+	if !cleared {
+		t.Error("the capture was not turned off")
+	}
+	if _, err := os.Stat(clip); err != nil {
+		t.Errorf("an indexed clip was removed: %v", err)
+	}
+}
+
+// A Say a phrase folder is turned off but left to that feature's own sweep.
+func TestALeftoverSayAPhraseFolderIsNotDeletedHere(t *testing.T) {
+	record, clip := leftoverRecord(t, "saynow-abc")
+	clearLeftoverCapture(record, func(map[string]any) error { return nil })
+	if _, err := os.Stat(clip); err != nil {
+		t.Errorf("a Say a phrase clip was removed by the game cleanup: %v", err)
 	}
 }
